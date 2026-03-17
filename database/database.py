@@ -164,7 +164,23 @@ def eliminar_servicio(id_servicio: int):
     conn.close()
 
 
+
 # ── Liquidaciones ─────
+
+def obtener_servicios_por_liquidacion(mensajero_id: int, fecha_liquidacion: str) -> list[dict]:
+    """Obtiene los servicios liquidados para un mensajero en la fecha exacta de la liquidación (±1 min)."""
+    from datetime import datetime, timedelta
+    conn = get_connection()
+    # Buscar servicios liquidados por ese mensajero y fecha cercana
+    fecha_dt = datetime.strptime(fecha_liquidacion, "%Y-%m-%d %H:%M:%S")
+    fecha_ini = (fecha_dt - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+    fecha_fin = (fecha_dt + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = conn.execute(
+        "SELECT * FROM Servicios WHERE mensajero_id=? AND estado='Liquidado' AND fecha BETWEEN ? AND ? ORDER BY fecha",
+        (mensajero_id, fecha_ini, fecha_fin)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list = None) -> dict | None:
     """

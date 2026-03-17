@@ -238,12 +238,79 @@ class App(ctk.CTk):
         self.minsize(1000, 650)
         self.configure(fg_color=COLORS["bg_dark"])
 
+        # Centrar ventana antes de maximizar (por si no soporta zoomed)
+        self.update_idletasks()
+        ancho = 1180
+        alto = 750
+        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
+        y = (self.winfo_screenheight() // 2) - (alto // 2)
+        self.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+        # Maximizar ventana al iniciar (pantalla completa en Windows)
+        self.after(0, lambda: self.state("zoomed"))
+
+        # Mostrar la ventana principal directamente (sin login)
+        # ...existing code...
+        # Centrar ventana antes de maximizar (por si no soporta zoomed)
+        self.update_idletasks()
+        ancho = 1180
+        alto = 750
+        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
+        y = (self.winfo_screenheight() // 2) - (alto // 2)
+        self.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+        # Maximizar ventana al iniciar (pantalla completa en Windows)
+        self.after(0, lambda: self.state("zoomed"))
+
+        # Mostrar ventana de contraseña antes de continuar
+        self.withdraw()  # Oculta la ventana principal
+        self._ventana_login()
+
+    # Eliminado: método de login por contraseña
+    def _ventana_login(self):
+        login = ctk.CTkToplevel(self)
+        login.title("Acceso restringido")
+        login.geometry("340x180")
+        login.resizable(False, False)
+        login.grab_set()
+        login.transient(self)
+        # Centrar
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (340 // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (180 // 2)
+        login.geometry(f"340x180+{x}+{y}")
+
+        ctk.CTkLabel(login, text="Ingrese la contraseña", font=ctk.CTkFont(size=15, weight="bold")).pack(pady=(20, 10))
+        entry_pass = ctk.CTkEntry(login, show="*", width=200)
+        entry_pass.pack(pady=5)
+
+        def check_pass():
+            if entry_pass.get() == "ya le llego":
+                CTkMessagebox(title="Acceso", message="ya le llego", icon="check")
+                login.destroy()
+                self._iniciar_app()
+            else:
+                CTkMessagebox(title="Error", message="Contraseña incorrecta", icon="cancel")
+                entry_pass.delete(0, "end")
+                entry_pass.focus()
+
+        ctk.CTkButton(login, text="Entrar", command=check_pass).pack(pady=15)
+        entry_pass.bind("<Return>", lambda e: check_pass())
+        entry_pass.focus()
+
+    def _iniciar_app(self):
         # Inicializar base de datos
         db.init_db()
-
         self.mensajero_seleccionado: dict | None = None # Variable para el mensajero seleccionado
         self._edit_widget = None # Variable para edición inline
-
+        self._build_ui()
+        self._cargar_mensajeros()
+    def _iniciar_app(self):
+        self.deiconify()  # Muestra la ventana principal
+        # Inicializar base de datos
+        db.init_db()
+        self.mensajero_seleccionado: dict | None = None # Variable para el mensajero seleccionado
+        self._edit_widget = None # Variable para edición inline
         self._build_ui()
         self._cargar_mensajeros()
 
@@ -287,6 +354,13 @@ class App(ctk.CTk):
 
         self._build_tab_gestion(tab1)
         self._build_tab_facturas(tab2)
+
+        # Forzar color negro en el texto de las pestañas
+        try:
+            for btn in self.tabview._segmented_button._buttons_dict.values():
+                btn.configure(text_color=("#000000", "#000000"))
+        except Exception:
+            pass
 
 
     def _build_tab_gestion(self, parent):
@@ -355,6 +429,8 @@ class App(ctk.CTk):
             command=self._eliminar_mensajero
         )
         self.btn_del_mz.pack(fill="x", padx=15, pady=(0, 15))
+
+    # Eliminado: protección de botones por contraseña
 
         # ── Panel Derecho: Servicios y Liquidación ──
         panel_der = ctk.CTkFrame(contenedor, fg_color=COLORS["bg_card"], corner_radius=12)
@@ -579,6 +655,9 @@ class App(ctk.CTk):
         scrollbar_liq.pack(side="right", fill="y")
         self.tree_liquidaciones.pack(fill="both", expand=True, padx=5, pady=5)
 
+        # Evento doble clic para mostrar tarjeta de liquidación
+        self.tree_liquidaciones.bind("<Double-1>", self._abrir_tarjeta_liquidacion)
+
         # Resumen en la parte inferior
         self.resumen_frame = ctk.CTkFrame(parent, fg_color=COLORS["bg_card"], corner_radius=12, height=55)
         self.resumen_frame.pack(fill="x", pady=(10, 0))
@@ -592,8 +671,69 @@ class App(ctk.CTk):
         )
         self.lbl_resumen.pack(expand=True)
 
-        # Cargar datos iniciales
+        # Cargar liquidaciones al iniciar
         self._cargar_liquidaciones()
+
+    def _abrir_tarjeta_liquidacion(self, event):
+        seleccion = self.tree_liquidaciones.selection()
+        if not seleccion:
+            return
+        item = self.tree_liquidaciones.item(seleccion[0])
+        valores = item["values"]
+        # Mapear columnas
+        datos = {
+            "ID": valores[0],
+            "Mensajero": valores[1],
+            "Fecha": valores[2],
+            "Subtotal": valores[3],
+            "Comisión": valores[4],
+            "Aseo": valores[5],
+            "Base": valores[6],
+            "Neto Mens.": valores[7],
+            "Ganancia Emp.": valores[8]
+        }
+        # Obtener servicios asociados a la liquidación
+        try:
+            id_liq = int(valores[0])
+        except Exception:
+            id_liq = None
+        # Buscar datos de la liquidación en la base para obtener mensajero_id y fecha exacta
+        filtro = self.filtro_var.get()
+        liquidaciones = db.obtener_liquidaciones(filtro)
+        liq = next((l for l in liquidaciones if str(l["id"]) == str(id_liq)), None)
+        servicios = []
+        if liq:
+            servicios = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["fecha"])
+        self._mostrar_tarjeta_liquidacion(datos, servicios)
+
+    def _mostrar_tarjeta_liquidacion(self, datos, servicios):
+        ventana = ctk.CTkToplevel(self)
+        ventana.title(f"Liquidación #{datos['ID']}")
+        ventana.geometry("420x500")
+        ventana.transient(self)
+        ventana.grab_set()
+
+        # Centrar la ventana sobre la principal
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (420 // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (500 // 2)
+        ventana.geometry(f"420x500+{x}+{y}")
+
+        ctk.CTkLabel(ventana, text=f"Liquidación #{datos['ID']}", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
+        for k, v in datos.items():
+            ctk.CTkLabel(ventana, text=f"{k}: {v}", font=ctk.CTkFont(size=14)).pack(anchor="w", padx=20, pady=2)
+        ctk.CTkLabel(ventana, text="\nServicios incluidos:", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=20, pady=(10,2))
+        if servicios:
+            frame = ctk.CTkFrame(ventana, fg_color=COLORS["bg_input"], corner_radius=8)
+            frame.pack(fill="x", padx=20, pady=5)
+            for s in servicios:
+                ctk.CTkLabel(frame, text=f"ID: {s['id']} | Valor: {fmt_moneda(s['valor'])} | Fecha: {s['fecha']}", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=8, pady=1)
+        else:
+            ctk.CTkLabel(ventana, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=20, pady=2)
+
+        # Espaciador para que el botón no se solape
+        ctk.CTkLabel(ventana, text="").pack(pady=5)
+        ctk.CTkButton(ventana, text="Cerrar", command=ventana.destroy).pack(pady=(0, 18))
 
 
     def _cargar_mensajeros(self):
