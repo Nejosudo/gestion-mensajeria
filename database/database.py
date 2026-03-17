@@ -1,8 +1,3 @@
-"""
-Módulo de persistencia con SQLite.
-Gestiona la conexión, creación de tablas y todas las operaciones CRUD.
-"""
-
 import sqlite3
 import os
 import platform

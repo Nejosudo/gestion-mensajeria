@@ -1,7 +1,3 @@
-"""
-Módulo de exportación a Excel (.xlsx) usando openpyxl.
-"""
-
 import os
 from datetime import datetime
 from openpyxl import Workbook

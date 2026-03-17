@@ -1,8 +1,8 @@
 import customtkinter as ctk
 from CTkMessagebox import CTkMessagebox
 from datetime import datetime
-import database as db
-from exportador import exportar_liquidaciones
+from database import database as db
+from database.exportador import exportar_liquidaciones
 
 # ── Configuración global ──
 ctk.set_appearance_mode("light")
