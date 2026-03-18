@@ -286,7 +286,6 @@ class App(ctk.CTk):
 
         def check_pass():
             if entry_pass.get() == "ya le llego":
-                CTkMessagebox(title="Acceso", message="ya le llego", icon="check")
                 login.destroy()
                 self._iniciar_app()
             else:
@@ -299,14 +298,8 @@ class App(ctk.CTk):
         entry_pass.focus()
 
     def _iniciar_app(self):
-        # Inicializar base de datos
-        db.init_db()
-        self.mensajero_seleccionado: dict | None = None # Variable para el mensajero seleccionado
-        self._edit_widget = None # Variable para edición inline
-        self._build_ui()
-        self._cargar_mensajeros()
-    def _iniciar_app(self):
         self.deiconify()  # Muestra la ventana principal
+        self.after(0, lambda: self.state("zoomed"))  # Maximiza la ventana al mostrarla
         # Inicializar base de datos
         db.init_db()
         self.mensajero_seleccionado: dict | None = None # Variable para el mensajero seleccionado
@@ -414,11 +407,42 @@ class App(ctk.CTk):
         self.lista_mensajeros.pack(fill="both", expand=True, padx=5, pady=(0, 10))
 
         # Panel Derecho: Botones
+        # --- Protección por contraseña para Editar y Eliminar ---
+        def pedir_contrasena(callback):
+            dialog = ctk.CTkToplevel(self)
+            dialog.title("Contraseña requerida")
+            dialog.geometry("320x150")
+            dialog.resizable(False, False)
+            dialog.grab_set()
+            dialog.transient(self)
+            # Centrar
+            self.update_idletasks()
+            x = self.winfo_x() + (self.winfo_width() // 2) - (320 // 2)
+            y = self.winfo_y() + (self.winfo_height() // 2) - (150 // 2)
+            dialog.geometry(f"320x150+{x}+{y}")
+
+            ctk.CTkLabel(dialog, text="Ingrese la contraseña", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(18, 8))
+            entry = ctk.CTkEntry(dialog, show="*", width=180)
+            entry.pack(pady=5)
+
+            def check():
+                if entry.get() == "ya le llego":
+                    dialog.destroy()
+                    callback()
+                else:
+                    CTkMessagebox(title="Error", message="Contraseña incorrecta", icon="cancel")
+                    entry.delete(0, "end")
+                    entry.focus()
+
+            ctk.CTkButton(dialog, text="Aceptar", command=check).pack(pady=12)
+            entry.bind("<Return>", lambda e: check())
+            entry.focus()
+
         self.btn_edit_mz = ctk.CTkButton(
             panel_izq, text="✏️ Editar Seleccionado", height=32,
             fg_color=COLORS["warning"], text_color="#ffffff",
             font=ctk.CTkFont(size=12, weight="bold"),
-            command=self._abrir_form_editar
+            command=lambda: pedir_contrasena(self._abrir_form_editar)
         )
         self.btn_edit_mz.pack(fill="x", padx=15, pady=(0, 5))
 
@@ -426,7 +450,7 @@ class App(ctk.CTk):
             panel_izq, text="🗑️ Eliminar Seleccionado", height=32,
             fg_color=COLORS["danger"], text_color="#ffffff",
             font=ctk.CTkFont(size=12, weight="bold"),
-            command=self._eliminar_mensajero
+            command=lambda: pedir_contrasena(self._eliminar_mensajero)
         )
         self.btn_del_mz.pack(fill="x", padx=15, pady=(0, 15))
 
@@ -525,7 +549,7 @@ class App(ctk.CTk):
             barra_inf, text="🗑️ Eliminar Servicio", height=38,
             fg_color=COLORS["danger"], hover_color="#c0392b",
             font=ctk.CTkFont(size=12, weight="bold"),
-            command=self._eliminar_servicio
+            command=lambda: pedir_contrasena(self._eliminar_servicio)
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
@@ -709,7 +733,7 @@ class App(ctk.CTk):
     def _mostrar_tarjeta_liquidacion(self, datos, servicios):
         ventana = ctk.CTkToplevel(self)
         ventana.title(f"Liquidación #{datos['ID']}")
-        ventana.geometry("420x500")
+        ventana.geometry("440x720")
         ventana.transient(self)
         ventana.grab_set()
 
@@ -719,21 +743,29 @@ class App(ctk.CTk):
         y = self.winfo_y() + (self.winfo_height() // 2) - (500 // 2)
         ventana.geometry(f"420x500+{x}+{y}")
 
-        ctk.CTkLabel(ventana, text=f"Liquidación #{datos['ID']}", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
-        for k, v in datos.items():
-            ctk.CTkLabel(ventana, text=f"{k}: {v}", font=ctk.CTkFont(size=14)).pack(anchor="w", padx=20, pady=2)
-        ctk.CTkLabel(ventana, text="\nServicios incluidos:", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=20, pady=(10,2))
-        if servicios:
-            frame = ctk.CTkFrame(ventana, fg_color=COLORS["bg_input"], corner_radius=8)
-            frame.pack(fill="x", padx=20, pady=5)
-            for s in servicios:
-                ctk.CTkLabel(frame, text=f"ID: {s['id']} | Valor: {fmt_moneda(s['valor'])} | Fecha: {s['fecha']}", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=8, pady=1)
-        else:
-            ctk.CTkLabel(ventana, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=20, pady=2)
+        # Botón cerrar SIEMPRE visible abajo
+        # Frame principal para todo el contenido y el botón
+        main_frame = ctk.CTkFrame(ventana, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True)
 
-        # Espaciador para que el botón no se solape
-        ctk.CTkLabel(ventana, text="").pack(pady=5)
-        ctk.CTkButton(ventana, text="Cerrar", command=ventana.destroy).pack(pady=(0, 18))
+        ctk.CTkLabel(main_frame, text=f"Liquidación #{datos['ID']}", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(16, 6))
+        for k, v in datos.items():
+            ctk.CTkLabel(main_frame, text=f"{k}: {v}", font=ctk.CTkFont(size=14)).pack(anchor="w", padx=28, pady=1)
+
+        ctk.CTkLabel(main_frame, text="\nServicios incluidos:", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=28, pady=(10,2))
+
+        # Frame scrollable para servicios incluidos (altura para 3 servicios)
+        if servicios:
+            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=320)
+            svc_frame.pack(fill="x", padx=28, pady=(5, 36))
+            for s in servicios:
+                ctk.CTkLabel(svc_frame, text=f"ID: {s['id']} | Valor: {fmt_moneda(s['valor'])} | Fecha: {s['fecha']}", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=8, pady=4)
+        else:
+            ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=28, pady=2)
+
+        # Botón cerrar SIEMPRE visible abajo
+        btn_cerrar = ctk.CTkButton(main_frame, text="Cerrar", command=ventana.destroy)
+        btn_cerrar.pack(fill="x", padx=80, pady=(18, 18), side="bottom")
 
 
     def _cargar_mensajeros(self):
