@@ -588,32 +588,30 @@ class App(ctk.CTk):
         # Definición de la tabla
         self.tree_servicios = ttk.Treeview(
             self.tabla_frame,
-            columns=("id", "valor", "fecha", "estado"),
+            columns=("id", "valor", "descripcion", "fecha"),
             show="headings",
             style="Dark.Treeview",
             selectmode="browse"
         )
         self.tree_servicios.heading("id", text="ID")
         self.tree_servicios.heading("valor", text="Valor")
+        self.tree_servicios.heading("descripcion", text="Descripción domicilio")
         self.tree_servicios.heading("fecha", text="Fecha / Hora")
-        self.tree_servicios.heading("estado", text="Estado")
 
         self.tree_servicios.column("id", width=50, anchor="center")
         self.tree_servicios.column("valor", width=120, anchor="center")
+        self.tree_servicios.column("descripcion", width=220, anchor="w")
         self.tree_servicios.column("fecha", width=180, anchor="center")
-        self.tree_servicios.column("estado", width=100, anchor="center")
 
         # Color de las filas para Light Mode
         self.tree_servicios.tag_configure("par", background=COLORS["table_row_2"])
-        self.tree_servicios.tag_configure("pendiente", foreground="#2980b9")
-        self.tree_servicios.tag_configure("liquidado", foreground="#27ae60")
 
         scrollbar = ttk.Scrollbar(self.tabla_frame, orient="vertical", command=self.tree_servicios.yview)
         self.tree_servicios.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         self.tree_servicios.pack(fill="both", expand=True, padx=2, pady=2)
 
-        # Doble clic para edición inline
+        # Doble clic para edición inline (valor o descripción)
         self.tree_servicios.bind("<Double-1>", self._on_doble_clic_servicio)
 
     def _build_tab_facturas(self, parent):
@@ -656,7 +654,7 @@ class App(ctk.CTk):
 
         self.tree_liquidaciones = ttk.Treeview(
             tabla_liq_frame,
-            columns=("id", "mensajero", "fecha", "subtotal", "comision", "aseo", "base", "neto", "empresa"),
+            columns=("id", "mensajero", "fecha", "subtotal", "comision", "aseo", "base", "neto", "empresa", "descripcion"),
             show="headings",
             style="Dark.Treeview",
             selectmode="browse"
@@ -666,7 +664,7 @@ class App(ctk.CTk):
             ("fecha", "Fecha", 150), ("subtotal", "Subtotal", 100),
             ("comision", "Comisión", 90), ("aseo", "Aseo", 60),
             ("base", "Base", 90), ("neto", "Neto Mens.", 110), 
-            ("empresa", "Ganancia Emp.", 120)
+            ("empresa", "Ganancia Emp.", 120), ("descripcion", "Descripción", 200)
         ]:
             self.tree_liquidaciones.heading(col, text=texto)
             self.tree_liquidaciones.column(col, width=ancho, anchor="center")
@@ -727,7 +725,7 @@ class App(ctk.CTk):
         liq = next((l for l in liquidaciones if str(l["id"]) == str(id_liq)), None)
         servicios = []
         if liq:
-            servicios = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["fecha"])
+            servicios = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["id"])
         self._mostrar_tarjeta_liquidacion(datos, servicios)
 
     def _mostrar_tarjeta_liquidacion(self, datos, servicios):
@@ -878,13 +876,11 @@ class App(ctk.CTk):
             tags = []
             if i % 2 == 1:
                 tags.append("par")
-            tags.append("pendiente" if s["estado"] == "Pendiente" else "liquidado")
-
             self.tree_servicios.insert("", "end", iid=str(s["id"]), values=(
                 s["id"],
                 fmt_moneda(s["valor"]),
-                s["fecha"],
-                s["estado"]
+                s.get("descripcion", ""),
+                s["fecha"]
             ), tags=tags)
 
     def _limpiar_tabla_servicios(self):
@@ -930,32 +926,30 @@ class App(ctk.CTk):
         if not item:
             return
 
-        # Solo permitir edición en la columna "valor" (#2)
-        if columna != "#2":
+
+        # Permitir edición en columna "valor" (#2) o "descripcion" (#3)
+        if columna not in ("#2", "#3"):
             return
 
-        # No editar servicios liquidados
         valores = self.tree_servicios.item(item, "values")
-        if valores[3] == "Liquidado":
-            CTkMessagebox(title="⚠️ No editable",
-                          message="No se puede editar un servicio ya liquidado.",
-                          icon="warning", option_1="OK")
-            return
-
-        # Obtener posición de la celda
         bbox = self.tree_servicios.bbox(item, columna)
         if not bbox:
             return
 
-        # Crear Entry sobre la celda
-        valor_actual = valores[1].replace("$", "").replace(".", "")
+        if columna == "#2":
+            valor_actual = valores[1].replace("$", "").replace(".", "")
+            justify = "center"
+        else:
+            valor_actual = valores[2]
+            justify = "left"
+
         entry = ctk.CTkEntry(
             self.tabla_frame,
             fg_color=COLORS["bg_card"],
             text_color=COLORS["text"],
             border_color=COLORS["accent"],
             corner_radius=4,
-            justify="center",
+            justify=justify,
             width=bbox[2] - 4,
             height=bbox[3] - 4
         )
@@ -967,6 +961,7 @@ class App(ctk.CTk):
         self._edit_widget = entry
         self._edit_item = item
         self._edit_id = int(valores[0])
+        self._edit_col = columna
 
         entry.bind("<Return>", self._confirmar_edicion_inline)
         entry.bind("<Escape>", lambda e: self._cerrar_edicion_inline())
@@ -975,6 +970,13 @@ class App(ctk.CTk):
     def _confirmar_edicion_inline(self, event=None):
         """Guarda el nuevo valor editado inline."""
         if not self._edit_widget:
+            return
+
+        if hasattr(self, '_edit_col') and self._edit_col == "#3":
+            nueva_desc = self._edit_widget.get().strip()
+            db.actualizar_descripcion_servicio(self._edit_id, nueva_desc)
+            self._cerrar_edicion_inline()
+            self._cargar_servicios_dia()
             return
 
         try:
@@ -1071,7 +1073,9 @@ class App(ctk.CTk):
         for i, liq in enumerate(liquidaciones):
             tags = ("par",) if i % 2 == 1 else ()
             ganancia_empresa = liq["comision_empresa"] + liq["descuento_aseo"]
-            
+            # Obtener descripciones de servicios liquidados
+            servicios_liq = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["id"])
+            descripciones = ", ".join([s.get("descripcion", "") for s in servicios_liq if s.get("descripcion")])
             self.tree_liquidaciones.insert("", "end", values=(
                 liq["id"],
                 liq.get("mensajero_nombre", ""),
@@ -1081,7 +1085,8 @@ class App(ctk.CTk):
                 fmt_moneda(liq["descuento_aseo"]),
                 fmt_moneda(liq.get("base_prestada", 0)),
                 fmt_moneda(liq["neto_mensajero"]),
-                fmt_moneda(ganancia_empresa)
+                fmt_moneda(ganancia_empresa),
+                descripciones
             ), tags=tags)
             total_neto += liq["neto_mensajero"]
             total_comision += liq["comision_empresa"]

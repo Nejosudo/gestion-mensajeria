@@ -58,7 +58,7 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
 
     # ── Encabezados ──
     headers = ["ID", "Mensajero", "Fecha", "Subtotal Servicios",
-               "Comisión (20%)", "Aseo", "Base Prestada", "Neto Mensajero", "Ganancia Empresa"]
+               "Comisión (20%)", "Aseo", "Base Prestada", "Neto Mensajero", "Ganancia Empresa", "Domicilios"]
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col_num, value=header)
         cell.font = header_font
@@ -67,10 +67,13 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         cell.border = border
 
     # ── Datos ──
+    from database import database as db
     for row_num, liq in enumerate(datos, 5):
         comision = liq.get("comision_empresa", 0)
         aseo = liq.get("descuento_aseo", 0)
         ganancia_empresa = comision + aseo
+        servicios_liq = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["fecha"])
+        descripciones = ", ".join([s.get("descripcion", "") for s in servicios_liq if s.get("descripcion")])
 
         valores = [
             liq.get("id", ""),
@@ -82,10 +85,11 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
             formatear_moneda(liq.get("base_prestada", 0)),
             formatear_moneda(liq.get("neto_mensajero", 0)),
             formatear_moneda(ganancia_empresa),
+            descripciones
         ]
         for col_num, valor in enumerate(valores, 1):
             cell = ws.cell(row=row_num, column=col_num, value=valor)
-            cell.font = money_font if col_num >= 4 else cell_font
+            cell.font = money_font if 4 <= col_num <= 9 else cell_font
             cell.border = border
             cell.alignment = Alignment(horizontal="center" if col_num <= 3 else "right")
             if (row_num - 5) % 2 == 1:
@@ -110,7 +114,7 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         ws.cell(row=fila_total, column=9, value=formatear_moneda(total_ganancia_empresa)).font = Font(bold=True, color="1a1a2e", size=12)
 
     # ── Ajustar ancho de columnas ──
-    anchos = [8, 22, 22, 22, 18, 12, 15, 18, 20]
+    anchos = [8, 22, 22, 22, 18, 12, 15, 18, 20, 40]
     for i, ancho in enumerate(anchos, 1):
         ws.column_dimensions[get_column_letter(i)].width = ancho
 

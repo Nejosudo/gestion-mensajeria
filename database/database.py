@@ -32,9 +32,20 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db():
+
     """Crea las tablas si no existen."""
     conn = get_connection()
     cursor = conn.cursor()
+
+    # --- Migración: Agregar columna liquidacion_id a Servicios si no existe ---
+    try:
+        cursor.execute("PRAGMA table_info(Servicios);")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "liquidacion_id" not in cols:
+            cursor.execute("ALTER TABLE Servicios ADD COLUMN liquidacion_id INTEGER NULL;")
+            conn.commit()
+    except Exception as e:
+        print("[Migración liquidacion_id]", e)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Mensajeros (
@@ -50,10 +61,36 @@ def init_db():
             mensajero_id    INTEGER NOT NULL,
             valor           REAL    NOT NULL DEFAULT 5000,
             fecha           TEXT    NOT NULL,
-            estado          TEXT    NOT NULL DEFAULT 'Pendiente',
+            descripcion     TEXT    DEFAULT '',
+            liquidacion_id  INTEGER,
             FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
         );
     """)
+
+    # --- Migración: Si la tabla Servicios tiene columna 'estado' y no tiene 'descripcion', migrar datos ---
+    try:
+        cursor.execute("PRAGMA table_info(Servicios);")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "estado" in cols and "descripcion" not in cols:
+            # Renombrar tabla vieja
+            cursor.execute("ALTER TABLE Servicios RENAME TO Servicios_old;")
+            # Crear nueva tabla
+            cursor.execute("""
+                CREATE TABLE Servicios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mensajero_id INTEGER NOT NULL,
+                    valor REAL NOT NULL DEFAULT 5000,
+                    fecha TEXT NOT NULL,
+                    descripcion TEXT DEFAULT '',
+                    FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
+                );
+            """)
+            # Copiar datos (sin estado)
+            cursor.execute("INSERT INTO Servicios (id, mensajero_id, valor, fecha) SELECT id, mensajero_id, valor, fecha FROM Servicios_old;")
+            cursor.execute("DROP TABLE Servicios_old;")
+            conn.commit()
+    except Exception as e:
+        print("[Migración Servicios]", e)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Liquidaciones (
@@ -119,7 +156,7 @@ def crear_servicio(mensajero_id: int, valor: float = 5000) -> int:
     cursor = conn.cursor()
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
-        "INSERT INTO Servicios (mensajero_id, valor, fecha, estado) VALUES (?, ?, ?, 'Pendiente')",
+        "INSERT INTO Servicios (mensajero_id, valor, fecha, descripcion) VALUES (?, ?, ?, '')",
         (mensajero_id, valor, fecha)
     )
     conn.commit()
@@ -131,7 +168,7 @@ def crear_servicio(mensajero_id: int, valor: float = 5000) -> int:
 def obtener_servicios_pendientes(mensajero_id: int) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT * FROM Servicios WHERE mensajero_id=? AND estado='Pendiente' ORDER BY fecha DESC",
+        "SELECT * FROM Servicios WHERE mensajero_id=? AND liquidacion_id IS NULL ORDER BY fecha DESC",
         (mensajero_id,)
     ).fetchall()
     conn.close()
@@ -143,7 +180,7 @@ def obtener_servicios_del_dia(mensajero_id: int) -> list[dict]:
     conn = get_connection()
     hoy = datetime.now().strftime("%Y-%m-%d")
     rows = conn.execute(
-        "SELECT * FROM Servicios WHERE mensajero_id=? AND fecha LIKE ? AND estado='Pendiente' ORDER BY fecha DESC",
+        "SELECT * FROM Servicios WHERE mensajero_id=? AND fecha LIKE ? AND liquidacion_id IS NULL ORDER BY fecha DESC",
         (mensajero_id, f"{hoy}%")
     ).fetchall()
     conn.close()
@@ -153,6 +190,14 @@ def obtener_servicios_del_dia(mensajero_id: int) -> list[dict]:
 def actualizar_valor_servicio(id_servicio: int, nuevo_valor: float):
     conn = get_connection()
     conn.execute("UPDATE Servicios SET valor=? WHERE id=?", (nuevo_valor, id_servicio))
+    conn.commit()
+    conn.close()
+
+def actualizar_descripcion_servicio(id_servicio: int, nueva_desc: str):
+    conn = get_connection()
+    conn.execute("UPDATE Servicios SET descripcion=? WHERE id=?", (nueva_desc, id_servicio))
+    conn.commit()
+    conn.close()
     conn.commit()
     conn.close()
 
@@ -169,15 +214,11 @@ def eliminar_servicio(id_servicio: int):
 
 def obtener_servicios_por_liquidacion(mensajero_id: int, fecha_liquidacion: str) -> list[dict]:
     """Obtiene los servicios liquidados para un mensajero en la fecha exacta de la liquidación (±1 min)."""
-    from datetime import datetime, timedelta
     conn = get_connection()
-    # Buscar servicios liquidados por ese mensajero y fecha cercana
-    fecha_dt = datetime.strptime(fecha_liquidacion, "%Y-%m-%d %H:%M:%S")
-    fecha_ini = (fecha_dt - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
-    fecha_fin = (fecha_dt + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+    # Buscar servicios asociados a la liquidación
     rows = conn.execute(
-        "SELECT * FROM Servicios WHERE mensajero_id=? AND estado='Liquidado' AND fecha BETWEEN ? AND ? ORDER BY fecha",
-        (mensajero_id, fecha_ini, fecha_fin)
+        "SELECT * FROM Servicios WHERE mensajero_id=? AND liquidacion_id=? ORDER BY fecha",
+        (mensajero_id, fecha_liquidacion)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -208,17 +249,17 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list = 
                                    comision_empresa, descuento_aseo, base_prestada, neto_mensajero)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (mensajero_id, fecha, subtotal, comision, descuento_aseo, base, neto))
+    liq_id = cursor.lastrowid
 
-    # Marcar servicios como liquidados
+    # Asignar liquidacion_id a los servicios liquidados
     ids_servicios = [s["id"] for s in pendientes]
     placeholders = ",".join("?" * len(ids_servicios))
     cursor.execute(
-        f"UPDATE Servicios SET estado='Liquidado' WHERE id IN ({placeholders})",
-        ids_servicios
+        f"UPDATE Servicios SET liquidacion_id=? WHERE id IN ({placeholders})",
+        (liq_id, *ids_servicios)
     )
 
     conn.commit()
-    liq_id = cursor.lastrowid
     conn.close()
 
     return {
