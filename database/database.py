@@ -198,8 +198,6 @@ def actualizar_descripcion_servicio(id_servicio: int, nueva_desc: str):
     conn.execute("UPDATE Servicios SET descripcion=? WHERE id=?", (nueva_desc, id_servicio))
     conn.commit()
     conn.close()
-    conn.commit()
-    conn.close()
 
 
 def eliminar_servicio(id_servicio: int):

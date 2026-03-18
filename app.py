@@ -32,18 +32,15 @@ class VentanaResumen(ctk.CTkToplevel):
     def __init__(self, parent, datos, on_confirm):
         super().__init__(parent)
         self.title("Confirmar Liquidación")
-        self.geometry("400x580")
         self.configure(fg_color=COLORS["bg_card"])
-        self.transient(parent)
-        self.wait_visibility()
-        self.grab_set()
-
-        # Centrar
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - 200
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - 290
-        self.geometry(f"+{x}+{y}")
+        # Centrado ultra-rápido antes de mostrar
+        self.withdraw()
+        centrar_ventana(self, 400, 580)
+        self.deiconify()
 
         self.on_confirm = on_confirm
+        self.grab_set()
+        self.focus_set()
 
         # Botones
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -116,23 +113,7 @@ class VentanaResumen(ctk.CTkToplevel):
         ctk.CTkLabel(f_base, text="🏦 BASE A DEVOLVER:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
         ctk.CTkLabel(f_base, text=fmt_moneda(datos['base']), font=ctk.CTkFont(size=18, weight="bold"), text_color="#e67e22").pack(side="right")
 
-        # Botones
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(fill="x", side="bottom", padx=25, pady=25)
-
-        ctk.CTkButton(
-            btn_frame, text="Cancelar", height=40,
-            fg_color="transparent", border_width=2, border_color=COLORS["border"],
-            text_color=COLORS["text"], hover_color=COLORS["bg_input"],
-            command=self.destroy
-        ).pack(side="left", fill="x", expand=True, padx=(0, 10))
-
-        ctk.CTkButton(
-            btn_frame, text="Confirmar y Liquidar", height=40,
-            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
-            text_color="#ffffff", font=ctk.CTkFont(weight="bold"),
-            command=self._confirmar
-        ).pack(side="right", fill="x", expand=True)
+        # Se eliminan los botones duplicados de aquí ya que estaban definidos arriba
 
     def _item_resumen(self, parent, label, value, is_negative):
         row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -144,8 +125,17 @@ class VentanaResumen(ctk.CTkToplevel):
         ctk.CTkLabel(row, text=value, font=ctk.CTkFont(size=12, weight="bold"), text_color=color_val).pack(side="right")
 
     def _confirmar(self):
+        """Ejecuta el callback y cierra la ventana de forma segura."""
+        # Soltar el control modal antes de cualquier acción que pueda abrir otra ventana
+        if self.winfo_exists():
+            self.grab_release()
+            self.withdraw()
+            
         self.on_confirm()
-        self.destroy()
+        
+        # Destruir con un pequeño margen para dejar que el event loop respire
+        if self.winfo_exists():
+            self.after(100, self.destroy)
 
 
 class FormularioMensajero(ctk.CTkToplevel):
@@ -160,11 +150,11 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.geometry("400x350")
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
-        self.wait_visibility()
+        self.withdraw()
+        centrar_ventana(self, 400, 350)
+        self.deiconify()
         self.grab_set()
-
-        # Centrar ventana
-        self.after(10, self._centrar)
+        self.focus_set()
 
         # UI
         ctk.CTkLabel(
@@ -180,6 +170,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.entry_nombre = ctk.CTkEntry(form, height=35, fg_color=COLORS["bg_input"])
         self.entry_nombre.pack(fill="x", pady=(2, 10))
 
+        ctk.CTkLabel(form, text="Teléfono:", text_color=COLORS["text_muted"]).pack(anchor="w")
         vcmd = (self.register(self._validar_telefono), '%P')
         self.entry_telefono = ctk.CTkEntry(
             form, height=35, fg_color=COLORS["bg_input"],
@@ -199,11 +190,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         )
         self.btn_guardar.pack(fill="x", padx=40, pady=10)
 
-    def _centrar(self):
-        self.update_idletasks()
-        x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
-        y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (350 // 2)
-        self.geometry(f"+{x}+{y}")
+        # Se eliminó el método _centrar original para usar el global centrar_ventana
 
     def _validar_telefono(self, P):
         """Valida que el teléfono solo contenga números y máximo 11 dígitos."""
@@ -211,19 +198,57 @@ class FormularioMensajero(ctk.CTkToplevel):
         return P.isdigit() and len(P) <= 11
 
     def _guardar(self):
+        if not self.winfo_exists():
+            return
         nombre = self.entry_nombre.get().strip()
         telefono = self.entry_telefono.get().strip()
         if not nombre or not telefono:
             CTkMessagebox(title="Error", message="Completa todos los campos.", icon="warning")
             return
-        
         self.callback(nombre, telefono, self.mensajero["id"] if self.mensajero else None)
-        self.destroy()
+        if self.winfo_exists():
+            self.after(10, self.destroy)
 
 
 def fmt_moneda(valor: float) -> str:
     """Formatea un número a moneda COP: $5.000"""
     return f"${valor:,.0f}".replace(",", ".")
+
+def centrar_ventana(ventana, ancho, alto):
+    """Centra una ventana CTk o CTkToplevel de forma segura."""
+    if not ventana.winfo_exists(): return
+    
+    # Asegurar que el master (si existe) esté actualizado para obtener sus dimensiones
+    if ventana.master and ventana.master.winfo_exists():
+        ventana.master.update_idletasks()
+    else:
+        ventana.update_idletasks()
+
+    try:
+        # Centrar respecto al padre si es visible
+        if ventana.master and hasattr(ventana.master, "winfo_viewable") and ventana.master.winfo_viewable():
+            mx = ventana.master.winfo_x()
+            my = ventana.master.winfo_y()
+            mw = ventana.master.winfo_width()
+            mh = ventana.master.winfo_height()
+            x = mx + (mw // 2) - (ancho // 2)
+            y = my + (mh // 2) - (alto // 2)
+        else:
+            # Centrar en pantalla
+            sw = ventana.winfo_screenwidth()
+            sh = ventana.winfo_screenheight()
+            x = (sw // 2) - (ancho // 2)
+            y = (sh // 2) - (alto // 2)
+    except Exception:
+        # Fallback total
+        sw = ventana.winfo_screenwidth()
+        sh = ventana.winfo_screenheight()
+        x = (sw // 2) - (ancho // 2)
+        y = (sh // 2) - (alto // 2)
+
+    x = max(0, x)
+    y = max(0, y)
+    ventana.geometry(f"{ancho}x{alto}+{int(x)}+{int(y)}")
 
 
 class App(ctk.CTk):
@@ -234,33 +259,8 @@ class App(ctk.CTk):
 
         # ── Ventana ──
         self.title("📦 Sistema de Mensajería — Gestión y Liquidación")
-        self.geometry("1180x750")
         self.minsize(1000, 650)
         self.configure(fg_color=COLORS["bg_dark"])
-
-        # Centrar ventana antes de maximizar (por si no soporta zoomed)
-        self.update_idletasks()
-        ancho = 1180
-        alto = 750
-        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
-        y = (self.winfo_screenheight() // 2) - (alto // 2)
-        self.geometry(f"{ancho}x{alto}+{x}+{y}")
-
-        # Maximizar ventana al iniciar (pantalla completa en Windows)
-        self.after(0, lambda: self.state("zoomed"))
-
-        # Mostrar la ventana principal directamente (sin login)
-        # ...existing code...
-        # Centrar ventana antes de maximizar (por si no soporta zoomed)
-        self.update_idletasks()
-        ancho = 1180
-        alto = 750
-        x = (self.winfo_screenwidth() // 2) - (ancho // 2)
-        y = (self.winfo_screenheight() // 2) - (alto // 2)
-        self.geometry(f"{ancho}x{alto}+{x}+{y}")
-
-        # Maximizar ventana al iniciar (pantalla completa en Windows)
-        self.after(0, lambda: self.state("zoomed"))
 
         # Mostrar ventana de contraseña antes de continuar
         self.withdraw()  # Oculta la ventana principal
@@ -274,11 +274,8 @@ class App(ctk.CTk):
         login.resizable(False, False)
         login.grab_set()
         login.transient(self)
-        # Centrar
-        self.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() // 2) - (340 // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (180 // 2)
-        login.geometry(f"340x180+{x}+{y}")
+        # Centrar en el centro de la pantalla SIEMPRE
+        centrar_ventana(login, 340, 180)
 
         ctk.CTkLabel(login, text="Ingrese la contraseña", font=ctk.CTkFont(size=15, weight="bold")).pack(pady=(20, 10))
         entry_pass = ctk.CTkEntry(login, show="*", width=200)
@@ -286,7 +283,8 @@ class App(ctk.CTk):
 
         def check_pass():
             if entry_pass.get() == "ya le llego":
-                login.destroy()
+                login.withdraw()
+                login.after(10, login.destroy)
                 self._iniciar_app()
             else:
                 CTkMessagebox(title="Error", message="Contraseña incorrecta", icon="cancel")
@@ -298,8 +296,10 @@ class App(ctk.CTk):
         entry_pass.focus()
 
     def _iniciar_app(self):
+        # Centrar y maximizar ANTES de mostrar la ventana principal
+        centrar_ventana(self, 1180, 750)
+        self.state("zoomed")
         self.deiconify()  # Muestra la ventana principal
-        self.after(0, lambda: self.state("zoomed"))  # Maximiza la ventana al mostrarla
         # Inicializar base de datos
         db.init_db()
         self.mensajero_seleccionado: dict | None = None # Variable para el mensajero seleccionado
@@ -414,12 +414,8 @@ class App(ctk.CTk):
             dialog.geometry("320x150")
             dialog.resizable(False, False)
             dialog.grab_set()
-            dialog.transient(self)
             # Centrar
-            self.update_idletasks()
-            x = self.winfo_x() + (self.winfo_width() // 2) - (320 // 2)
-            y = self.winfo_y() + (self.winfo_height() // 2) - (150 // 2)
-            dialog.geometry(f"320x150+{x}+{y}")
+            centrar_ventana(dialog, 320, 150)
 
             ctk.CTkLabel(dialog, text="Ingrese la contraseña", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(18, 8))
             entry = ctk.CTkEntry(dialog, show="*", width=180)
@@ -427,7 +423,8 @@ class App(ctk.CTk):
 
             def check():
                 if entry.get() == "ya le llego":
-                    dialog.destroy()
+                    dialog.withdraw()
+                    dialog.after(10, dialog.destroy)
                     callback()
                 else:
                     CTkMessagebox(title="Error", message="Contraseña incorrecta", icon="cancel")
@@ -654,7 +651,7 @@ class App(ctk.CTk):
 
         self.tree_liquidaciones = ttk.Treeview(
             tabla_liq_frame,
-            columns=("id", "mensajero", "fecha", "subtotal", "comision", "aseo", "base", "neto", "empresa", "descripcion"),
+            columns=("id", "mensajero", "fecha", "subtotal", "comision", "aseo", "base", "neto", "empresa", "num_servicios"),
             show="headings",
             style="Dark.Treeview",
             selectmode="browse"
@@ -664,7 +661,7 @@ class App(ctk.CTk):
             ("fecha", "Fecha", 150), ("subtotal", "Subtotal", 100),
             ("comision", "Comisión", 90), ("aseo", "Aseo", 60),
             ("base", "Base", 90), ("neto", "Neto Mens.", 110), 
-            ("empresa", "Ganancia Emp.", 120), ("descripcion", "Descripción", 200)
+            ("empresa", "Ganancia Emp.", 120), ("num_servicios", "N° Servicios", 120)
         ]:
             self.tree_liquidaciones.heading(col, text=texto)
             self.tree_liquidaciones.column(col, width=ancho, anchor="center")
@@ -697,6 +694,8 @@ class App(ctk.CTk):
         self._cargar_liquidaciones()
 
     def _abrir_tarjeta_liquidacion(self, event):
+        if not self.tree_liquidaciones.winfo_exists():
+            return
         seleccion = self.tree_liquidaciones.selection()
         if not seleccion:
             return
@@ -726,44 +725,113 @@ class App(ctk.CTk):
         servicios = []
         if liq:
             servicios = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["id"])
-        self._mostrar_tarjeta_liquidacion(datos, servicios)
+        # Centrar desde el principio
+        self._mostrar_tarjeta_liquidacion(datos, servicios, parent=self)
 
-    def _mostrar_tarjeta_liquidacion(self, datos, servicios):
-        ventana = ctk.CTkToplevel(self)
+    def _mostrar_tarjeta_liquidacion(self, datos, servicios, parent=None):
+        if parent is None:
+            parent = self
+        ancho = 420
+        alto = 600
+        ventana = ctk.CTkToplevel(parent)
         ventana.title(f"Liquidación #{datos['ID']}")
-        ventana.geometry("440x720")
-        ventana.transient(self)
+        ventana.configure(fg_color=COLORS["bg_card"])
+        ventana.transient(parent)
+        ventana.withdraw()
+        centrar_ventana(ventana, 420, 600)
+        ventana.deiconify()
         ventana.grab_set()
+        ventana.focus_set()
 
-        # Centrar la ventana sobre la principal
-        self.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() // 2) - (420 // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (500 // 2)
-        ventana.geometry(f"420x500+{x}+{y}")
+        # Header estilo premium con botón cerrar
+        header = ctk.CTkFrame(ventana, fg_color=COLORS["accent"], height=60, corner_radius=0)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        ctk.CTkLabel(
+            header, text=f"Liquidación #{datos['ID']}",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#ffffff"
+        ).pack(pady=16, side="left", padx=(20,0))
 
-        # Botón cerrar SIEMPRE visible abajo
-        # Frame principal para todo el contenido y el botón
+        # Contenedor principal
         main_frame = ctk.CTkFrame(ventana, fg_color="transparent")
-        main_frame.pack(fill="both", expand=True)
+        main_frame.pack(fill="both", expand=True, padx=25, pady=15)
 
-        ctk.CTkLabel(main_frame, text=f"Liquidación #{datos['ID']}", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(16, 6))
-        for k, v in datos.items():
-            ctk.CTkLabel(main_frame, text=f"{k}: {v}", font=ctk.CTkFont(size=14)).pack(anchor="w", padx=28, pady=1)
+        # Info Mensajero y Fecha
+        ctk.CTkLabel(
+            main_frame, text=f"👤 {datos['Mensajero']}",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=COLORS["text"]
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            main_frame, text=f"📅 Fecha: {datos['Fecha']}",
+            font=ctk.CTkFont(size=12),
+            text_color=COLORS["text_muted"]
+        ).pack(anchor="w", pady=(2, 10))
 
-        ctk.CTkLabel(main_frame, text="\nServicios incluidos:", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=28, pady=(10,2))
+        # Desglose
+        card = ctk.CTkFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=12)
+        card.pack(fill="x", pady=10)
+        # Número de servicios
+        ctk.CTkLabel(card, text="📦 N° Servicios liquidados:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["accent"]).pack(side="left", padx=10, pady=8)
+        ctk.CTkLabel(card, text=f"{len(servicios)}", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["text"]).pack(side="right", padx=10, pady=8)
 
-        # Frame scrollable para servicios incluidos (altura para 3 servicios)
+        # Totales
+        totales_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        totales_frame.pack(fill="x", pady=(10, 0))
+        # Subtotal
+        ctk.CTkLabel(totales_frame, text="💰 Subtotal:", font=ctk.CTkFont(size=13)).pack(side="left")
+        ctk.CTkLabel(totales_frame, text=datos['Subtotal'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"]).pack(side="right")
+        # Comisión
+        com_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        com_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(com_frame, text="🏢 Comisión Empresa:", font=ctk.CTkFont(size=13)).pack(side="left")
+        ctk.CTkLabel(com_frame, text=datos['Comisión'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
+        # Aseo
+        aseo_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        aseo_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(aseo_frame, text="🧹 Descuento Aseo:", font=ctk.CTkFont(size=13)).pack(side="left")
+        ctk.CTkLabel(aseo_frame, text=datos['Aseo'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
+        # Base
+        base_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        base_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(base_frame, text="🏦 Base:", font=ctk.CTkFont(size=13)).pack(side="left")
+        ctk.CTkLabel(base_frame, text=datos['Base'], font=ctk.CTkFont(size=13, weight="bold"), text_color="#e67e22").pack(side="right")
+        # Ganancia Neta (empresa)
+        neto_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        neto_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(neto_frame, text="💵 Ganancia Neta (Empresa):", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left")
+        ctk.CTkLabel(neto_frame, text=datos['Ganancia Emp.'], font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+        # Ganancia Mensajero
+        mensajero_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        mensajero_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(mensajero_frame, text="🏍️ Ganancia Mensajero:", font=ctk.CTkFont(size=13)).pack(side="left")
+        ctk.CTkLabel(mensajero_frame, text=datos['Neto Mens.'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["accent"]).pack(side="right")
+
+        # Separador
+        ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
+
+        # Servicios incluidos
+        ctk.CTkLabel(main_frame, text="Servicios incluidos:", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=8, pady=(10,2))
         if servicios:
-            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=320)
-            svc_frame.pack(fill="x", padx=28, pady=(5, 36))
+            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=520)
+            svc_frame.pack(fill="x", padx=8, pady=(5, 10))
             for s in servicios:
-                ctk.CTkLabel(svc_frame, text=f"ID: {s['id']} | Valor: {fmt_moneda(s['valor'])} | Fecha: {s['fecha']}", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=8, pady=4)
+                # Contenedor para cada servicio para separarlos visualmente
+                s_container = ctk.CTkFrame(svc_frame, fg_color="transparent")
+                s_container.pack(fill="x", padx=4, pady=2)
+                
+                desc = f" — {s['descripcion']}" if s.get("descripcion") else ""
+                txt = f"ID: {s['id']} | {fmt_moneda(s['valor'])} | {s['fecha']}{desc}"
+                
+                ctk.CTkLabel(
+                    s_container, 
+                    text=txt,
+                    font=ctk.CTkFont(size=12),
+                    justify="left"
+                ).pack(anchor="w", padx=8)
         else:
-            ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=28, pady=2)
-
-        # Botón cerrar SIEMPRE visible abajo
-        btn_cerrar = ctk.CTkButton(main_frame, text="Cerrar", command=ventana.destroy)
-        btn_cerrar.pack(fill="x", padx=80, pady=(18, 18), side="bottom")
+            ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=8, pady=2)
 
 
     def _cargar_mensajeros(self):
@@ -999,9 +1067,9 @@ class App(ctk.CTk):
 
     def _cerrar_edicion_inline(self):
         """Destruye el widget de edición inline si existe."""
-        if self._edit_widget:
+        if self._edit_widget and self._edit_widget.winfo_exists():
             self._edit_widget.destroy()
-            self._edit_widget = None
+        self._edit_widget = None
 
     def _ejecutar_liquidacion(self):
         """Ejecuta la liquidación del mensajero seleccionado."""
@@ -1051,6 +1119,7 @@ class App(ctk.CTk):
             self._cargar_liquidaciones()
             
             CTkMessagebox(
+                master=self,  # Forzar que el master sea la ventana principal (App)
                 title="✅ Éxito",
                 message="La liquidación se ha procesado correctamente.",
                 icon="check", option_1="Excelente"
@@ -1073,9 +1142,8 @@ class App(ctk.CTk):
         for i, liq in enumerate(liquidaciones):
             tags = ("par",) if i % 2 == 1 else ()
             ganancia_empresa = liq["comision_empresa"] + liq["descuento_aseo"]
-            # Obtener descripciones de servicios liquidados
             servicios_liq = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["id"])
-            descripciones = ", ".join([s.get("descripcion", "") for s in servicios_liq if s.get("descripcion")])
+            num_servicios = len(servicios_liq)
             self.tree_liquidaciones.insert("", "end", values=(
                 liq["id"],
                 liq.get("mensajero_nombre", ""),
@@ -1086,7 +1154,7 @@ class App(ctk.CTk):
                 fmt_moneda(liq.get("base_prestada", 0)),
                 fmt_moneda(liq["neto_mensajero"]),
                 fmt_moneda(ganancia_empresa),
-                descripciones
+                num_servicios
             ), tags=tags)
             total_neto += liq["neto_mensajero"]
             total_comision += liq["comision_empresa"]
