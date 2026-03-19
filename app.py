@@ -34,36 +34,20 @@ class VentanaResumen(ctk.CTkToplevel):
         self.title("Confirmar Liquidación")
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
-        self.wait_visibility()
-        self.grab_set()
 
         # Centrar desde el principio
         ancho = 400
         alto = 580
+        self.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (ancho // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (alto // 2)
         if self.winfo_exists():
             self.geometry(f"{ancho}x{alto}+{x}+{y}")
+            
+        self.wait_visibility()
+        self.grab_set()
 
         self.on_confirm = on_confirm
-
-        # Botones
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(fill="x", side="bottom", padx=25, pady=20)
-
-        ctk.CTkButton(
-            btn_frame, text="Cancelar", height=42,
-            fg_color="transparent", border_width=2, border_color=COLORS["border"],
-            text_color=COLORS["text"], hover_color=COLORS["bg_input"],
-            command=self.destroy
-        ).pack(side="left", fill="x", expand=True, padx=(0, 10))
-
-        ctk.CTkButton(
-            btn_frame, text="Confirmar y Liquidar", height=42,
-            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
-            text_color="#ffffff", font=ctk.CTkFont(weight="bold"),
-            command=self._confirmar
-        ).pack(side="right", fill="x", expand=True)
 
         # Header
         header = ctk.CTkFrame(self, fg_color=COLORS["accent"], height=70, corner_radius=0)
@@ -98,19 +82,24 @@ class VentanaResumen(ctk.CTkToplevel):
         card.pack(fill="x", pady=10)
 
         self._item_resumen(card, "📦 Servicios realizados", f"{datos['num_servicios']}", False)
-        self._item_resumen(card, "💰 Subtotal", fmt_moneda(datos['subtotal']), False)
-        self._item_resumen(card, "🏢 Comisión Empresa (20%)", f"- {fmt_moneda(datos['comision'])}", True)
-        self._item_resumen(card, "🧹 Descuento Aseo", f"- {fmt_moneda(600)}", True)
+        self._item_resumen(card, "💰 Subtotal generado", fmt_moneda(datos['subtotal']), False)
+        self._item_resumen(card, "🏍️ Pago a Mensajero", f"- {fmt_moneda(datos['neto'])}", True)
 
         # Separador
         ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
 
-        # ── Totales Importantes ──
-        # Ganancia Neta
-        f_ganancia = ctk.CTkFrame(main_frame, fg_color="transparent")
-        f_ganancia.pack(fill="x")
-        ctk.CTkLabel(f_ganancia, text="💵 GANANCIA NETA:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(f_ganancia, text=fmt_moneda(datos['neto']), font=ctk.CTkFont(size=18, weight="bold"), text_color="#27ae60").pack(side="right")
+        # ── Totales Importantes (Empresa) ──
+        # Ganancia Empresa
+        f_empresa = ctk.CTkFrame(main_frame, fg_color="transparent")
+        f_empresa.pack(fill="x")
+        ctk.CTkLabel(f_empresa, text="🏢 GANANCIA EMPRESA:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkLabel(f_empresa, text=fmt_moneda(datos['comision']), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+
+        # Aseo
+        f_aseo = ctk.CTkFrame(main_frame, fg_color="transparent")
+        f_aseo.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(f_aseo, text="🧹 ASEO:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkLabel(f_aseo, text=fmt_moneda(1000), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
 
         # Base
         f_base = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -163,11 +152,16 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.geometry("400x350")
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
+        
+        # Centrar ventana
+        self.update_idletasks()
+        if self.master and self.master.winfo_exists():
+            x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
+            y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (350 // 2)
+            self.geometry(f"+{x}+{y}")
+            
         self.wait_visibility()
         self.grab_set()
-
-        # Centrar ventana
-        self.after(10, self._centrar)
 
         # UI
         ctk.CTkLabel(
@@ -201,14 +195,6 @@ class FormularioMensajero(ctk.CTkToplevel):
             command=self._guardar
         )
         self.btn_guardar.pack(fill="x", padx=40, pady=10)
-
-    def _centrar(self):
-        if not self.winfo_exists():
-            return
-        self.update_idletasks()
-        x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
-        y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (350 // 2)
-        self.geometry(f"+{x}+{y}")
 
     def _validar_telefono(self, P):
         """Valida que el teléfono solo contenga números y máximo 11 dígitos."""
@@ -253,7 +239,6 @@ class App(ctk.CTk):
         login.title("Acceso restringido")
         login.geometry("340x180")
         login.resizable(False, False)
-        login.grab_set()
         login.transient(self)
         # Centrar en el centro de la pantalla SIEMPRE
         self.update_idletasks()
@@ -262,6 +247,8 @@ class App(ctk.CTk):
         x = (screen_w // 2) - (340 // 2)
         y = (screen_h // 2) - (180 // 2)
         login.geometry(f"340x180+{x}+{y}")
+        login.wait_visibility()
+        login.grab_set()
 
         ctk.CTkLabel(login, text="Ingrese la contraseña", font=ctk.CTkFont(size=15, weight="bold")).pack(pady=(20, 10))
         entry_pass = ctk.CTkEntry(login, show="*", width=200)
@@ -292,6 +279,11 @@ class App(ctk.CTk):
         # Inicializar base de datos
         db.init_db()
         self.mensajero_seleccionado: dict | None = None # Variable para el mensajero seleccionado
+        self.bases_mensajeros: dict = {} # Guarda la base individual para cada mensajero
+        for m in db.obtener_mensajeros():
+            base_bd = m.get("base_actual", 0)
+            if base_bd is None: base_bd = 0
+            self.bases_mensajeros[m["id"]] = str(int(base_bd) if base_bd == int(base_bd) else base_bd) if base_bd else "0"
         self._edit_widget = None # Variable para edición inline
         self._build_ui()
         self._cargar_mensajeros()
@@ -402,13 +394,14 @@ class App(ctk.CTk):
             dialog.title("Contraseña requerida")
             dialog.geometry("320x150")
             dialog.resizable(False, False)
-            dialog.grab_set()
             dialog.transient(self)
             # Centrar
             self.update_idletasks()
             x = self.winfo_x() + (self.winfo_width() // 2) - (320 // 2)
             y = self.winfo_y() + (self.winfo_height() // 2) - (150 // 2)
             dialog.geometry(f"320x150+{x}+{y}")
+            dialog.wait_visibility()
+            dialog.grab_set()
 
             ctk.CTkLabel(dialog, text="Ingrese la contraseña", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(18, 8))
             entry = ctk.CTkEntry(dialog, show="*", width=180)
@@ -504,7 +497,11 @@ class App(ctk.CTk):
             justify="center"
         )
         self.entry_base.pack(side="left", padx=2)
-        self.entry_base.insert(0, "0")
+        self.entry_base.insert(0, "$0")
+        self.entry_base.bind("<KeyRelease>", self._on_base_key_release)
+        self.entry_base.bind("<Return>", self._guardar_base_actual)
+        self.entry_base.bind("<FocusIn>", self._on_base_focus_in)
+        self.entry_base.bind("<FocusOut>", self._on_base_focus_out)
 
         ctk.CTkButton(
             barra_acciones, text="➕ Agregar servicio", width=32, height=28,
@@ -729,12 +726,13 @@ class App(ctk.CTk):
         ventana.title(f"Liquidación #{datos['ID']}")
         ventana.configure(fg_color=COLORS["bg_card"])
         ventana.transient(parent)
-        ventana.wait_visibility()
-        ventana.grab_set()
         # Centrar desde el principio
+        ventana.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (ancho // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (alto // 2)
         ventana.geometry(f"{ancho}x{alto}+{x}+{y}")
+        ventana.wait_visibility()
+        ventana.grab_set()
 
         # Header estilo premium con botón cerrar
         header = ctk.CTkFrame(ventana, fg_color=COLORS["accent"], height=60, corner_radius=0)
@@ -773,33 +771,34 @@ class App(ctk.CTk):
         totales_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         totales_frame.pack(fill="x", pady=(10, 0))
         # Subtotal
-        ctk.CTkLabel(totales_frame, text="💰 Subtotal:", font=ctk.CTkFont(size=13)).pack(side="left")
+        ctk.CTkLabel(totales_frame, text="💰 Subtotal generado:", font=ctk.CTkFont(size=13)).pack(side="left")
         ctk.CTkLabel(totales_frame, text=datos['Subtotal'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"]).pack(side="right")
-        # Comisión
-        com_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        com_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(com_frame, text="🏢 Comisión Empresa:", font=ctk.CTkFont(size=13)).pack(side="left")
-        ctk.CTkLabel(com_frame, text=datos['Comisión'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
-        # Aseo
-        aseo_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        aseo_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(aseo_frame, text="🧹 Descuento Aseo:", font=ctk.CTkFont(size=13)).pack(side="left")
-        ctk.CTkLabel(aseo_frame, text=datos['Aseo'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
-        # Base
-        base_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        base_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(base_frame, text="🏦 Base:", font=ctk.CTkFont(size=13)).pack(side="left")
-        ctk.CTkLabel(base_frame, text=datos['Base'], font=ctk.CTkFont(size=13, weight="bold"), text_color="#e67e22").pack(side="right")
-        # Ganancia Neta (empresa)
-        neto_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        neto_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(neto_frame, text="💵 Ganancia Neta (Empresa):", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left")
-        ctk.CTkLabel(neto_frame, text=datos['Ganancia Emp.'], font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["success"]).pack(side="right")
         # Ganancia Mensajero
         mensajero_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         mensajero_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(mensajero_frame, text="🏍️ Ganancia Mensajero:", font=ctk.CTkFont(size=13)).pack(side="left")
-        ctk.CTkLabel(mensajero_frame, text=datos['Neto Mens.'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["accent"]).pack(side="right")
+        ctk.CTkLabel(mensajero_frame, text="🏍️ Pago a Mensajero:", font=ctk.CTkFont(size=13)).pack(side="left")
+        # Format Neto Mens directly with negative sign since the dictionary doesn't have it
+        _neto_val = datos['Neto Mens.'].replace('$', '- $') if not datos['Neto Mens.'].startswith('-') else datos['Neto Mens.']
+        ctk.CTkLabel(mensajero_frame, text=_neto_val, font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
+
+        # Separador interno
+        ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
+
+        # Ganancia Neta (empresa) Main Title
+        neto_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        neto_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(neto_frame, text="🏢 GANANCIA EMPRESA:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkLabel(neto_frame, text=datos['Comisión'], font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+        # Aseo
+        aseo_g_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        aseo_g_frame.pack(fill="x", pady=(5, 0))
+        ctk.CTkLabel(aseo_g_frame, text="🧹 ASEO:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkLabel(aseo_g_frame, text=datos['Aseo'], font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+        # Base
+        base_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        base_frame.pack(fill="x", pady=(10, 0))
+        ctk.CTkLabel(base_frame, text="🏦 BASE A DEVOLVER:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkLabel(base_frame, text=datos['Base'], font=ctk.CTkFont(size=18, weight="bold"), text_color="#e67e22").pack(side="right")
 
         # Separador
         ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
@@ -849,10 +848,28 @@ class App(ctk.CTk):
 
     def _seleccionar_mensajero(self, id_: int, nombre: str, telefono: str):
         """Selecciona un mensajero y carga sus servicios."""
+        # Almacenar la base del anterior mensajero seleccionado
+        if self.mensajero_seleccionado and hasattr(self, 'entry_base'):
+            base_cruda = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
+            val_to_save = base_cruda if base_cruda else "0"
+            self.bases_mensajeros[self.mensajero_seleccionado["id"]] = val_to_save
+            try: db.actualizar_base_mensajero(self.mensajero_seleccionado["id"], float(val_to_save))
+            except Exception: pass
+
         self.mensajero_seleccionado = {"id": id_, "nombre": nombre, "telefono": telefono}
         self.lbl_mensajero_sel.configure(text=f"👤  {nombre}  —  📞 {telefono}")
         self._cargar_mensajeros() # Recargar para resaltar selección
         self._cargar_servicios_dia()
+
+        # Restaurar la base del mensajero recién seleccionado
+        if hasattr(self, 'entry_base'):
+            self.entry_base.delete(0, "end")
+            base_cruda = self.bases_mensajeros.get(id_, "0")
+            try:
+                base_fmt = fmt_moneda(float(base_cruda))
+            except ValueError:
+                base_fmt = "$0"
+            self.entry_base.insert(0, base_fmt)
 
     def _abrir_form_nuevo(self):
         FormularioMensajero(self, self._procesar_form_mensajero)
@@ -891,6 +908,54 @@ class App(ctk.CTk):
             self.lbl_mensajero_sel.configure(text="Selecciona un mensajero ←")
             self._cargar_mensajeros()
             self._limpiar_tabla_servicios()
+
+    def _on_base_key_release(self, event=None):
+        if not hasattr(self, 'entry_base'): return
+        if event and event.keysym in ["Left", "Right", "Up", "Down", "Tab"]: return
+        
+        valor_raw = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
+        valor = "".join(c for c in valor_raw if c.isdigit())
+        
+        if valor:
+            nuevo_texto = f"{int(valor):,}".replace(",", ".")
+        else:
+            nuevo_texto = ""
+            
+        actual = self.entry_base.get().replace("$", "")
+        if actual != nuevo_texto:
+            self.entry_base.delete(0, "end")
+            self.entry_base.insert(0, nuevo_texto)
+
+    def _on_base_focus_in(self, event=None):
+        if hasattr(self, 'entry_base'):
+            valor = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
+            self.entry_base.delete(0, "end")
+            if valor != "0" and valor != "":
+                formatted = f"{int(valor):,}".replace(",", ".")
+                self.entry_base.insert(0, formatted)
+
+    def _on_base_focus_out(self, event=None):
+        if hasattr(self, 'entry_base'):
+            valor_crudo = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
+            if not valor_crudo:
+                valor_crudo = "0"
+            try:
+                valor_fmt = fmt_moneda(float(valor_crudo))
+            except ValueError:
+                valor_fmt = "$0"
+                valor_crudo = "0"
+
+            self.entry_base.delete(0, "end")
+            self.entry_base.insert(0, valor_fmt)
+
+            if self.mensajero_seleccionado:
+                self.bases_mensajeros[self.mensajero_seleccionado["id"]] = valor_crudo
+                try: db.actualizar_base_mensajero(self.mensajero_seleccionado["id"], float(valor_crudo))
+                except Exception: pass
+
+    def _guardar_base_actual(self, event=None):
+        """Asigna la base al dar Enter, quitando el foco para que se dispare el evento FocusOut."""
+        self.focus() # quitar foco del input asegurando que se procese el valor
 
     def _asignar_servicio(self):
         if not self.mensajero_seleccionado:
@@ -1071,14 +1136,15 @@ class App(ctk.CTk):
 
         # Calcular resumen previo
         try:
-            val_base = float(self.entry_base.get().strip().replace(".", "").replace(",", "")) if self.entry_base.get() else 0
+            val_base_str = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
+            val_base = float(val_base_str) if val_base_str else 0
         except ValueError:
             val_base = 0 # Default to 0 if input is invalid
 
         subtotal = sum(s["valor"] for s in pendientes)
         comision = subtotal * 0.20
         # Ganancia real del trabajo
-        ganancia_neta = (subtotal * 0.80) - 600
+        ganancia_neta = (subtotal * 0.80) - 1000
 
         datos_liquidacion = {
             "nombre": self.mensajero_seleccionado['nombre'],
@@ -1093,9 +1159,13 @@ class App(ctk.CTk):
             # Ejecutar en DB
             db.ejecutar_liquidacion(self.mensajero_seleccionado["id"], val_base, pendientes)
             
-            # Limpiar UI
+            # Limpiar UI y la base en memoria
             self.entry_base.delete(0, "end")
-            self.entry_base.insert(0, "0")
+            self.entry_base.insert(0, "$0")
+            if self.mensajero_seleccionado["id"] in self.bases_mensajeros:
+                self.bases_mensajeros[self.mensajero_seleccionado["id"]] = "0"
+            try: db.actualizar_base_mensajero(self.mensajero_seleccionado["id"], 0)
+            except Exception: pass
             self._cargar_servicios_dia()
             self._cargar_liquidaciones()
             

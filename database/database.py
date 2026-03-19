@@ -47,6 +47,16 @@ def init_db():
     except Exception as e:
         print("[Migración liquidacion_id]", e)
 
+    # --- Migración: Agregar columna base_actual a Mensajeros ---
+    try:
+        cursor.execute("PRAGMA table_info(Mensajeros);")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "base_actual" not in cols:
+            cursor.execute("ALTER TABLE Mensajeros ADD COLUMN base_actual REAL DEFAULT 0;")
+            conn.commit()
+    except Exception as e:
+        print("[Migración base_actual]", e)
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Mensajeros (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,7 +109,7 @@ def init_db():
             fecha               TEXT    NOT NULL,
             subtotal_servicios  REAL    NOT NULL,
             comision_empresa    REAL    NOT NULL,
-            descuento_aseo      REAL    NOT NULL DEFAULT 600,
+            descuento_aseo      REAL    NOT NULL DEFAULT 1000,
             base_prestada       REAL    NOT NULL DEFAULT 0,
             neto_mensajero      REAL    NOT NULL,
             FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
@@ -145,6 +155,13 @@ def actualizar_mensajero(id_: int, nombre: str, telefono: str):
 def eliminar_mensajero(id_: int):
     conn = get_connection()
     conn.execute("DELETE FROM Mensajeros WHERE id=?", (id_,))
+    conn.commit()
+    conn.close()
+
+
+def actualizar_base_mensajero(id_: int, base: float):
+    conn = get_connection()
+    conn.execute("UPDATE Mensajeros SET base_actual=? WHERE id=?", (base, id_))
     conn.commit()
     conn.close()
 
@@ -233,7 +250,7 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list = 
 
     subtotal = sum(s["valor"] for s in pendientes)
     comision = subtotal * 0.20
-    descuento_aseo = 600
+    descuento_aseo = 1000
     # El neto es la ganancia por el trabajo (80% menos aseo)
     neto = (subtotal * 0.80) - descuento_aseo
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
