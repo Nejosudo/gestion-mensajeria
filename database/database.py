@@ -37,31 +37,13 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # --- Migración: Agregar columna liquidacion_id a Servicios si no existe ---
-    try:
-        cursor.execute("PRAGMA table_info(Servicios);")
-        cols = [c[1] for c in cursor.fetchall()]
-        if "liquidacion_id" not in cols:
-            cursor.execute("ALTER TABLE Servicios ADD COLUMN liquidacion_id INTEGER NULL;")
-            conn.commit()
-    except Exception as e:
-        print("[Migración liquidacion_id]", e)
-
-    # --- Migración: Agregar columna base_actual a Mensajeros ---
-    try:
-        cursor.execute("PRAGMA table_info(Mensajeros);")
-        cols = [c[1] for c in cursor.fetchall()]
-        if "base_actual" not in cols:
-            cursor.execute("ALTER TABLE Mensajeros ADD COLUMN base_actual REAL DEFAULT 0;")
-            conn.commit()
-    except Exception as e:
-        print("[Migración base_actual]", e)
-
+    # Primero: Crear las tablas base si no existen para evitar errores en las migraciones
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Mensajeros (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre      TEXT    NOT NULL,
-            telefono    TEXT    NOT NULL
+            telefono    TEXT    NOT NULL,
+            base_actual REAL    DEFAULT 0
         );
     """)
 
@@ -76,6 +58,39 @@ def init_db():
             FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
         );
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Liquidaciones (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            mensajero_id        INTEGER NOT NULL,
+            fecha               TEXT    NOT NULL,
+            subtotal_servicios  REAL    NOT NULL,
+            comision_empresa    REAL    NOT NULL,
+            descuento_aseo      REAL    NOT NULL,
+            base_prestada       REAL    NOT NULL DEFAULT 0,
+            neto_mensajero      REAL    NOT NULL,
+            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
+        );
+    """)
+
+    # --- Migración: Agregar columnas faltantes si la tabla ya existía pero es vieja ---
+    try:
+        cursor.execute("PRAGMA table_info(Servicios);")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "liquidacion_id" not in cols:
+            cursor.execute("ALTER TABLE Servicios ADD COLUMN liquidacion_id INTEGER NULL;")
+            conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("PRAGMA table_info(Mensajeros);")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "base_actual" not in cols:
+            cursor.execute("ALTER TABLE Mensajeros ADD COLUMN base_actual REAL DEFAULT 0;")
+            conn.commit()
+    except Exception:
+        pass
 
     # --- Migración: Si la tabla Servicios tiene columna 'estado' y no tiene 'descripcion', migrar datos ---
     try:
@@ -129,7 +144,7 @@ def crear_mensajero(nombre: str, telefono: str) -> int:
     conn.commit()
     nuevo_id = cursor.lastrowid
     conn.close()
-    return nuevo_id
+    return nuevo_id if nuevo_id is not None else 0
 
 
 def obtener_mensajeros(busqueda: str = "") -> list[dict]:
@@ -179,7 +194,7 @@ def crear_servicio(mensajero_id: int, valor: float = 5000) -> int:
     conn.commit()
     nuevo_id = cursor.lastrowid
     conn.close()
-    return nuevo_id
+    return nuevo_id if nuevo_id is not None else 0
 
 
 def obtener_servicios_pendientes(mensajero_id: int) -> list[dict]:
@@ -238,7 +253,7 @@ def obtener_servicios_por_liquidacion(mensajero_id: int, fecha_liquidacion: str)
     conn.close()
     return [dict(r) for r in rows]
 
-def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list = None) -> dict | None:
+def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | None = None) -> dict | None:
     """
     Agrupa servicios pendientes, descuenta base y registra la liquidación.
     """

@@ -11,15 +11,15 @@ class TabGestion(ctk.CTkFrame):
         self.app = app_controller
         self.pack(fill="both", expand=True)
 
-        self.mensajero_seleccionado = None
-        self.bases_mensajeros = {}
+        self.mensajero_seleccionado: dict | None = None
+        self.bases_mensajeros: dict[int, str] = {}
         for m in db.obtener_mensajeros():
             base_bd = m.get("base_actual", 0)
             if base_bd is None: base_bd = 0
             self.bases_mensajeros[m["id"]] = str(int(base_bd) if base_bd == int(base_bd) else base_bd) if base_bd else "0"
             
-        self._edit_widget = None
-        self._after_search_id = None
+        self._edit_widget: ctk.CTkEntry | None = None
+        self._after_search_id: str | None = None
 
         self._build_ui()
         self._cargar_mensajeros()
@@ -283,7 +283,7 @@ class TabGestion(ctk.CTkFrame):
             return
 
         for m in mensajeros:
-            is_sel = self.mensajero_seleccionado and self.mensajero_seleccionado["id"] == m["id"]
+            is_sel = self.mensajero_seleccionado is not None and self.mensajero_seleccionado.get("id") == m["id"]
             
             btn = ctk.CTkButton(
                 self.lista_mensajeros,
@@ -330,10 +330,9 @@ class TabGestion(ctk.CTkFrame):
         FormularioMensajero(self.app, self._procesar_form_mensajero, self.mensajero_seleccionado)
 
     def _procesar_form_mensajero(self, nombre, telefono, id_=None):
-        if id_:
+        if id_ and self.mensajero_seleccionado:
             db.actualizar_mensajero(id_, nombre, telefono)
-            self.mensajero_seleccionado["nombre"] = nombre
-            self.mensajero_seleccionado["telefono"] = telefono
+            self.mensajero_seleccionado = {"id": id_, "nombre": nombre, "telefono": telefono}
             self.lbl_mensajero_sel.configure(text=f"👤  {nombre}  —  📞 {telefono}")
         else:
             db.crear_mensajero(nombre, telefono)
