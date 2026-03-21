@@ -291,31 +291,34 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list = 
 def obtener_liquidaciones(filtro: str = "todo") -> list[dict]:
     """
     Devuelve liquidaciones filtradas. filtro: 'hoy', 'semana', 'mes', 'todo'.
+    Ademas incluye el total de servicios como num_servicios.
     """
     conn = get_connection()
     hoy = datetime.now()
 
     query_base = """
-        SELECT L.*, M.nombre AS mensajero_nombre, M.telefono AS mensajero_telefono
+        SELECT L.*, M.nombre AS mensajero_nombre, M.telefono AS mensajero_telefono,
+               COUNT(S.id) AS num_servicios
         FROM Liquidaciones L
         JOIN Mensajeros M ON L.mensajero_id = M.id
+        LEFT JOIN Servicios S ON S.liquidacion_id = L.id
     """
 
     if filtro == "hoy":
         fecha_inicio = hoy.strftime("%Y-%m-%d")
-        query = query_base + " WHERE L.fecha LIKE ? ORDER BY L.fecha DESC"
+        query = query_base + " WHERE L.fecha LIKE ? GROUP BY L.id ORDER BY L.fecha DESC"
         rows = conn.execute(query, (f"{fecha_inicio}%",)).fetchall()
     elif filtro == "semana":
         inicio_semana = (hoy - timedelta(days=hoy.weekday())).strftime("%Y-%m-%d")
-        query = query_base + " WHERE L.fecha >= ? ORDER BY L.fecha DESC"
+        query = query_base + " WHERE L.fecha >= ? GROUP BY L.id ORDER BY L.fecha DESC"
         rows = conn.execute(query, (inicio_semana,)).fetchall()
     elif filtro == "mes":
         inicio_mes = hoy.strftime("%Y-%m-01")
-        query = query_base + " WHERE L.fecha >= ? ORDER BY L.fecha DESC"
+        query = query_base + " WHERE L.fecha >= ? GROUP BY L.id ORDER BY L.fecha DESC"
         rows = conn.execute(query, (inicio_mes,)).fetchall()
     else:
-        query = query_base + " ORDER BY L.fecha DESC"
+        query = query_base + " GROUP BY L.id ORDER BY L.fecha DESC"
         rows = conn.execute(query).fetchall()
 
     conn.close()
-    return [dict(r) for r in rows]
+    return [dict(row) for row in rows]
