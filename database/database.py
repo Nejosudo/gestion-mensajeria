@@ -74,6 +74,15 @@ def init_db():
             FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE SET NULL
         );
     """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Gastos (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            descripcion TEXT    NOT NULL,
+            monto       REAL    NOT NULL,
+            fecha       TEXT    NOT NULL
+        );
+    """)
 
     # --- Migración: Agregar columnas faltantes si la tabla ya existía pero es vieja ---
     try:
@@ -296,6 +305,53 @@ def actualizar_descripcion_servicio(id_servicio: int, nueva_desc: str):
 def eliminar_servicio(id_servicio: int):
     conn = get_connection()
     conn.execute("DELETE FROM Servicios WHERE id=?", (id_servicio,))
+    conn.commit()
+    conn.close()
+
+
+# ── Gastos ────────────────────────────────────────────────────────
+
+def crear_gasto(descripcion: str, monto: float) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        "INSERT INTO Gastos (descripcion, monto, fecha) VALUES (?, ?, ?)",
+        (descripcion, monto, fecha)
+    )
+    conn.commit()
+    nuevo_id = cursor.lastrowid
+    conn.close()
+    return nuevo_id if nuevo_id is not None else 0
+
+
+def obtener_gastos(filtro: str = "todo") -> list[dict]:
+    conn = get_connection()
+    hoy = datetime.now()
+    query = "SELECT * FROM Gastos"
+    params = []
+
+    if filtro == "hoy":
+        query += " WHERE fecha LIKE ?"
+        params.append(f"{hoy.strftime('%Y-%m-%d')}%")
+    elif filtro == "semana":
+        inicio_semana = (hoy - timedelta(days=hoy.weekday())).strftime("%Y-%m-%d")
+        query += " WHERE fecha >= ?"
+        params.append(inicio_semana)
+    elif filtro == "mes":
+        inicio_mes = hoy.strftime("%Y-%m-01")
+        query += " WHERE fecha >= ?"
+        params.append(inicio_mes)
+
+    query += " ORDER BY fecha DESC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def eliminar_gasto(id_gasto: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM Gastos WHERE id=?", (id_gasto,))
     conn.commit()
     conn.close()
 

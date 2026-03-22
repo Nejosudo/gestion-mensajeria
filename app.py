@@ -7,6 +7,7 @@ import platform
 from core.config import COLORS
 from ui.tabs.tab_gestion import TabGestion
 from ui.tabs.tab_facturas import TabFacturas
+from ui.tabs.tab_finanzas import TabFinanzas
 
 # ── Configuración global ──
 ctk.set_appearance_mode("light")
@@ -139,10 +140,12 @@ class App(ctk.CTk):
         # Añadir las pestañas como Frames vacíos primero
         tab1 = self.tabview.add("🏍️  Gestión de Mensajeros")
         tab2 = self.tabview.add("📊  Facturas e Informes")
+        tab3 = self.tabview.add("💰  Ingresos y Gastos")
 
         # Inyectar las instancias modulares
         self.tab_gestion = TabGestion(tab1, app_controller=self)
         self.tab_facturas = TabFacturas(tab2)
+        self.tab_finanzas = TabFinanzas(tab3)
 
         # Forzar color negro en el texto de las pestañas
         try:
@@ -155,6 +158,8 @@ class App(ctk.CTk):
         """Llamado desde tab_gestion cuando se ejecuta una liquidación."""
         if hasattr(self, 'tab_facturas'):
             self.tab_facturas.reload_data()
+        if hasattr(self, 'tab_finanzas'):
+            self.tab_finanzas.reload_data()
 
 if __name__ == "__main__":
     app = App()
