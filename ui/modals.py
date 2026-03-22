@@ -154,6 +154,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.entry_nombre.pack(fill="x", pady=(2, 10))
 
         vcmd = (self.register(self._validar_telefono), '%P')
+        ctk.CTkLabel(form, text="Telefono:", text_color=COLORS["text_muted"]).pack(anchor="w")
         self.entry_telefono = ctk.CTkEntry(
             form, height=35, fg_color=COLORS["bg_input"],
             validate="key", validatecommand=vcmd
