@@ -118,7 +118,7 @@ class TabFacturas(ctk.CTkFrame):
         liq = next((l for l in liquidaciones if str(l["id"]) == str(id_liq)), None)
         servicios = []
         if liq:
-            servicios = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["id"])
+            servicios = db.obtener_servicios_por_liquidacion(liq["id"])
         # Centrar desde el principio
         self._mostrar_tarjeta_liquidacion(datos, servicios, parent=self)
 

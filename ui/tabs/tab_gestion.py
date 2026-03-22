@@ -344,9 +344,9 @@ class TabGestion(ctk.CTkFrame):
                           icon="warning", option_1="OK")
             return
         msg = CTkMessagebox(
-            title="🗑️ Confirmar eliminación",
-            message=f"¿Eliminar al mensajero '{self.mensajero_seleccionado['nombre']}'?\n"
-                    f"Se borrarán también sus servicios y liquidaciones.",
+            title="👤 Confirmar eliminación",
+            message=f"¿Eliminar al mensajero '{self.mensajero_seleccionado['nombre']}'?\n\n"
+                    f"Nota: Las facturas y liquidaciones pasadas se conservarán para el historial del negocio.",
             icon="question", option_1="Cancelar", option_2="Eliminar"
         )
         if msg.get() == "Eliminar":

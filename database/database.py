@@ -50,26 +50,28 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Servicios (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            mensajero_id    INTEGER NOT NULL,
+            mensajero_id    INTEGER,
             valor           REAL    NOT NULL DEFAULT 5000,
             fecha           TEXT    NOT NULL,
             descripcion     TEXT    DEFAULT '',
             liquidacion_id  INTEGER,
-            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
+            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE SET NULL
         );
     """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Liquidaciones (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            mensajero_id        INTEGER NOT NULL,
+            mensajero_id        INTEGER,
+            mensajero_nombre    TEXT,
+            mensajero_telefono  TEXT,
             fecha               TEXT    NOT NULL,
             subtotal_servicios  REAL    NOT NULL,
             comision_empresa    REAL    NOT NULL,
-            descuento_aseo      REAL    NOT NULL,
+            descuento_aseo      REAL    NOT NULL DEFAULT 1000,
             base_prestada       REAL    NOT NULL DEFAULT 0,
             neto_mensajero      REAL    NOT NULL,
-            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
+            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE SET NULL
         );
     """)
 
@@ -117,19 +119,78 @@ def init_db():
     except Exception as e:
         print("[Migración Servicios]", e)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Liquidaciones (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            mensajero_id        INTEGER NOT NULL,
-            fecha               TEXT    NOT NULL,
-            subtotal_servicios  REAL    NOT NULL,
-            comision_empresa    REAL    NOT NULL,
-            descuento_aseo      REAL    NOT NULL DEFAULT 1000,
-            base_prestada       REAL    NOT NULL DEFAULT 0,
-            neto_mensajero      REAL    NOT NULL,
-            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
-        );
-    """)
+    # --- Migración: Quitar ON DELETE CASCADE de Liquidaciones y Servicios ---
+    try:
+        cursor.execute("PRAGMA foreign_key_list(Liquidaciones);")
+        fks = cursor.fetchall()
+        # Si tiene ON DELETE CASCADE, recreamos la tabla
+        has_cascade = any(fk["on_delete"] == "CASCADE" for fk in fks)
+        
+        # También checamos si faltan las nuevas columnas de nombre/teléfono
+        cursor.execute("PRAGMA table_info(Liquidaciones);")
+        cols = [c[1] for c in cursor.fetchall()]
+        has_new_cols = "mensajero_nombre" in cols
+
+        if has_cascade or not has_new_cols:
+            print("[Migración] Reenlazando Liquidaciones para evitar borrado en cascada...")
+            # 1. Renombrar vieja
+            cursor.execute("ALTER TABLE Liquidaciones RENAME TO Liquidaciones_old;")
+            # 2. Crear nueva (con la definición actualizada en init_db pero aquí repetida por seguridad)
+            cursor.execute("""
+                CREATE TABLE Liquidaciones (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mensajero_id        INTEGER,
+                    mensajero_nombre    TEXT,
+                    mensajero_telefono  TEXT,
+                    fecha               TEXT    NOT NULL,
+                    subtotal_servicios  REAL    NOT NULL,
+                    comision_empresa    REAL    NOT NULL,
+                    descuento_aseo      REAL    NOT NULL DEFAULT 1000,
+                    base_prestada       REAL    NOT NULL DEFAULT 0,
+                    neto_mensajero      REAL    NOT NULL,
+                    FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE SET NULL
+                );
+            """)
+            # 3. Copiar datos e intentar traer nombres de Mensajeros si existen
+            cursor.execute("""
+                INSERT INTO Liquidaciones (
+                    id, mensajero_id, fecha, subtotal_servicios, 
+                    comision_empresa, descuento_aseo, base_prestada, neto_mensajero,
+                    mensajero_nombre, mensajero_telefono
+                )
+                SELECT 
+                    L.id, L.mensajero_id, L.fecha, L.subtotal_servicios, 
+                    L.comision_empresa, L.descuento_aseo, L.base_prestada, L.neto_mensajero,
+                    M.nombre, M.telefono
+                FROM Liquidaciones_old L
+                LEFT JOIN Mensajeros M ON L.mensajero_id = M.id;
+            """)
+            cursor.execute("DROP TABLE Liquidaciones_old;")
+            conn.commit()
+
+        # Lo mismo para Servicios
+        cursor.execute("PRAGMA foreign_key_list(Servicios);")
+        fks_s = cursor.fetchall()
+        if any(fk["on_delete"] == "CASCADE" for fk in fks_s):
+            print("[Migración] Reenlazando Servicios para evitar borrado en cascada...")
+            cursor.execute("ALTER TABLE Servicios RENAME TO Servicios_old;")
+            cursor.execute("""
+                CREATE TABLE Servicios (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mensajero_id    INTEGER,
+                    valor           REAL    NOT NULL DEFAULT 5000,
+                    fecha           TEXT    NOT NULL,
+                    descripcion     TEXT    DEFAULT '',
+                    liquidacion_id  INTEGER,
+                    FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE SET NULL
+                );
+            """)
+            cursor.execute("INSERT INTO Servicios SELECT * FROM Servicios_old;")
+            cursor.execute("DROP TABLE Servicios_old;")
+            conn.commit()
+
+    except Exception as e:
+        print("[Migración Cascade]", e)
 
     conn.commit()
     conn.close()
@@ -242,13 +303,12 @@ def eliminar_servicio(id_servicio: int):
 
 # ── Liquidaciones ─────
 
-def obtener_servicios_por_liquidacion(mensajero_id: int, fecha_liquidacion: str) -> list[dict]:
-    """Obtiene los servicios liquidados para un mensajero en la fecha exacta de la liquidación (±1 min)."""
+def obtener_servicios_por_liquidacion(id_liquidacion: int) -> list[dict]:
+    """Obtiene los servicios asociados a una liquidación específica."""
     conn = get_connection()
-    # Buscar servicios asociados a la liquidación
     rows = conn.execute(
-        "SELECT * FROM Servicios WHERE mensajero_id=? AND liquidacion_id=? ORDER BY fecha",
-        (mensajero_id, fecha_liquidacion)
+        "SELECT * FROM Servicios WHERE liquidacion_id=? ORDER BY fecha",
+        (id_liquidacion,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -273,12 +333,18 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | 
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Obtener datos actuales del mensajero para persistencia
+    mensajero = conn.execute("SELECT nombre, telefono FROM Mensajeros WHERE id=?", (mensajero_id,)).fetchone()
+    m_nombre = mensajero["nombre"] if mensajero else "Mensajero Eliminado"
+    m_telefono = mensajero["telefono"] if mensajero else ""
+
     # Registrar liquidación (la base se guarda por separado)
     cursor.execute("""
-        INSERT INTO Liquidaciones (mensajero_id, fecha, subtotal_servicios,
-                                   comision_empresa, descuento_aseo, base_prestada, neto_mensajero)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (mensajero_id, fecha, subtotal, comision, descuento_aseo, base, neto))
+        INSERT INTO Liquidaciones (mensajero_id, mensajero_nombre, mensajero_telefono, fecha,
+                                   subtotal_servicios, comision_empresa, descuento_aseo,
+                                   base_prestada, neto_mensajero)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (mensajero_id, m_nombre, m_telefono, fecha, subtotal, comision, descuento_aseo, base, neto))
     liq_id = cursor.lastrowid
 
     # Asignar liquidacion_id a los servicios liquidados
@@ -312,10 +378,12 @@ def obtener_liquidaciones(filtro: str = "todo") -> list[dict]:
     hoy = datetime.now()
 
     query_base = """
-        SELECT L.*, M.nombre AS mensajero_nombre, M.telefono AS mensajero_telefono,
+        SELECT L.*, 
+               COALESCE(M.nombre, L.mensajero_nombre) AS mensajero_nombre, 
+               COALESCE(M.telefono, L.mensajero_telefono) AS mensajero_telefono,
                COUNT(S.id) AS num_servicios
         FROM Liquidaciones L
-        JOIN Mensajeros M ON L.mensajero_id = M.id
+        LEFT JOIN Mensajeros M ON L.mensajero_id = M.id
         LEFT JOIN Servicios S ON S.liquidacion_id = L.id
     """
 
