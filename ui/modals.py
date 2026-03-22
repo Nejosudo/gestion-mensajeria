@@ -75,7 +75,7 @@ class VentanaResumen(ctk.CTkToplevel):
         f_aseo = ctk.CTkFrame(main_frame, fg_color="transparent")
         f_aseo.pack(fill="x", pady=(5, 0))
         ctk.CTkLabel(f_aseo, text="🧹 ASEO:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(f_aseo, text=fmt_moneda(1000), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+        ctk.CTkLabel(f_aseo, text=fmt_moneda(datos.get('descuento_aseo', 1000)), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
 
         # Base
         f_base = ctk.CTkFrame(main_frame, fg_color="transparent")

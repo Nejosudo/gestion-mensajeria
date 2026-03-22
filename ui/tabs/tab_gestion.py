@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import tkinter.ttk as ttk
+from datetime import datetime
 from CTkMessagebox import CTkMessagebox
 from core.config import COLORS, fmt_moneda
 from database import database as db
@@ -255,6 +256,7 @@ class TabGestion(ctk.CTkFrame):
         self.tree_servicios.column("descripcion", width=220, anchor="w")
         self.tree_servicios.column("fecha", width=180, anchor="center")
         self.tree_servicios.tag_configure("par", background=COLORS["table_row_2"])
+        self.tree_servicios.tag_configure("atrasado", foreground="#e74c3c") # Color rojo para servicios antiguos
 
         scrollbar = ttk.Scrollbar(self.tabla_frame, orient="vertical", command=self.tree_servicios.yview)
         self.tree_servicios.configure(yscrollcommand=scrollbar.set)
@@ -428,10 +430,18 @@ class TabGestion(ctk.CTkFrame):
             return
 
         servicios = db.obtener_servicios_pendientes(self.mensajero_seleccionado["id"])
+        hoy = datetime.now().strftime("%Y-%m-%d")
+        
         for i, s in enumerate(servicios):
             tags = []
             if i % 2 == 1:
                 tags.append("par")
+            
+            # Si el servicio no es de hoy, marcar como atrasado
+            fecha_servicio = s["fecha"].split(" ")[0]
+            if fecha_servicio != hoy:
+                tags.append("atrasado")
+                
             self.tree_servicios.insert("", "end", iid=str(s["id"]), values=(
                 s["id"],
                 fmt_moneda(s["valor"]),
@@ -564,9 +574,16 @@ class TabGestion(ctk.CTkFrame):
         except ValueError:
             val_base = 0
 
+        # Calcular aseo por días calendario desde el más antiguo hasta hoy
+        fechas = [datetime.strptime(s["fecha"], "%Y-%m-%d %H:%M:%S").date() for s in pendientes]
+        fecha_min = min(fechas)
+        fecha_hoy = datetime.now().date()
+        num_dias = (fecha_hoy - fecha_min).days + 1
+        descuento_aseo_total = 1000 * num_dias
+
         subtotal = sum(s["valor"] for s in pendientes)
         comision = subtotal * 0.20
-        ganancia_neta = (subtotal * 0.80) - 1000
+        ganancia_neta = (subtotal * 0.80) - descuento_aseo_total
 
         datos_liquidacion = {
             "nombre": self.mensajero_seleccionado['nombre'],
@@ -574,7 +591,8 @@ class TabGestion(ctk.CTkFrame):
             "subtotal": subtotal,
             "comision": comision,
             "neto": ganancia_neta,
-            "base": val_base
+            "base": val_base,
+            "descuento_aseo": descuento_aseo_total
         }
 
         def confirmar_final():

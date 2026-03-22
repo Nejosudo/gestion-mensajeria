@@ -325,8 +325,15 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | 
 
     subtotal = sum(s["valor"] for s in pendientes)
     comision = subtotal * 0.20
-    descuento_aseo = 1000
-    # El neto es la ganancia por el trabajo (80% menos aseo)
+    # Calcular días calendario transcurridos desde el servicio más antiguo
+    fechas = [datetime.strptime(s["fecha"], "%Y-%m-%d %H:%M:%S").date() for s in pendientes]
+    fecha_min = min(fechas)
+    fecha_hoy = datetime.now().date()
+    # Diferencia de días + 1 para incluir el día de inicio y fin
+    num_dias = (fecha_hoy - fecha_min).days + 1
+    descuento_aseo = 1000 * num_dias
+    
+    # El neto es la ganancia por el trabajo (80% menos aseo total)
     neto = (subtotal * 0.80) - descuento_aseo
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
