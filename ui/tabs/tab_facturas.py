@@ -131,10 +131,11 @@ class TabFacturas(ctk.CTkFrame):
         ventana.title(f"Liquidación #{datos['ID']}")
         ventana.configure(fg_color=COLORS["bg_card"])
         ventana.transient(parent)
-        # Centrar desde el principio
+        # Centrar usando la ventana raíz real
         ventana.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (ancho // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (alto // 2)
+        root = parent.winfo_toplevel()
+        x = root.winfo_x() + (root.winfo_width() // 2) - (ancho // 2)
+        y = root.winfo_y() + (root.winfo_height() // 2) - (alto // 2)
         ventana.geometry(f"{ancho}x{alto}+{x}+{y}")
         ventana.lift()
         ventana.grab_set()
@@ -214,7 +215,14 @@ class TabFacturas(ctk.CTkFrame):
             svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=520)
             svc_frame.pack(fill="x", padx=8, pady=(5, 10))
             for s in servicios:
-                ctk.CTkLabel(svc_frame, text=f"ID: {s['id']} | Valor: {fmt_moneda(s['valor'])} | Fecha: {s['fecha']}", font=ctk.CTkFont(size=13)).pack(anchor="w", padx=8, pady=4)
+                desc = s.get("descripcion", "") or ""
+                texto_principal = f"🚴 ID: {s['id']}  |  💰 {fmt_moneda(s['valor'])}  |  🕒 {s['fecha']}"
+                fila = ctk.CTkFrame(svc_frame, fg_color="transparent")
+                fila.pack(fill="x", padx=4, pady=(4, 0))
+                ctk.CTkLabel(fila, text=texto_principal, font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text"], anchor="w").pack(anchor="w", padx=4)
+                if desc:
+                    ctk.CTkLabel(fila, text=f"   📝 {desc}", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w").pack(anchor="w", padx=4)
+                ctk.CTkFrame(svc_frame, height=1, fg_color=COLORS["border"]).pack(fill="x", padx=4, pady=(4, 0))
         else:
             ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=8, pady=2)
 
