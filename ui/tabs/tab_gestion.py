@@ -201,7 +201,7 @@ class TabGestion(ctk.CTkFrame):
         tabla_header.pack(fill="x", padx=15, pady=(5, 0))
 
         ctk.CTkLabel(
-            tabla_header, text="📋  Servicios del Día",
+            tabla_header, text="📋  Servicios Pendientes",
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=COLORS["text"]
         ).pack(side="left")
@@ -309,7 +309,7 @@ class TabGestion(ctk.CTkFrame):
         self.mensajero_seleccionado = {"id": id_, "nombre": nombre, "telefono": telefono}
         self.lbl_mensajero_sel.configure(text=f"👤  {nombre}  —  📞 {telefono}")
         self._cargar_mensajeros() 
-        self._cargar_servicios_dia()
+        self._cargar_servicios_pendientes()
 
         if hasattr(self, 'entry_base'):
             self.entry_base.delete(0, "end")
@@ -420,14 +420,14 @@ class TabGestion(ctk.CTkFrame):
         db.crear_servicio(self.mensajero_seleccionado["id"], valor)
         self.entry_valor.delete(0, "end")
         self.entry_valor.insert(0, "5000")
-        self._cargar_servicios_dia()
+        self._cargar_servicios_pendientes()
 
-    def _cargar_servicios_dia(self):
+    def _cargar_servicios_pendientes(self):
         self._limpiar_tabla_servicios()
         if not self.mensajero_seleccionado:
             return
 
-        servicios = db.obtener_servicios_del_dia(self.mensajero_seleccionado["id"])
+        servicios = db.obtener_servicios_pendientes(self.mensajero_seleccionado["id"])
         for i, s in enumerate(servicios):
             tags = []
             if i % 2 == 1:
@@ -464,7 +464,7 @@ class TabGestion(ctk.CTkFrame):
         )
         if msg.get() == "Eliminar":
             db.eliminar_servicio(id_servicio)
-            self._cargar_servicios_dia()
+            self._cargar_servicios_pendientes()
 
     def _on_doble_clic_servicio(self, event):
         self._cerrar_edicion_inline()
@@ -517,7 +517,7 @@ class TabGestion(ctk.CTkFrame):
             nueva_desc = self._edit_widget.get().strip()
             db.actualizar_descripcion_servicio(self._edit_id, nueva_desc)
             self._cerrar_edicion_inline()
-            self._cargar_servicios_dia()
+            self._cargar_servicios_pendientes()
             return
 
         try:
@@ -536,7 +536,7 @@ class TabGestion(ctk.CTkFrame):
 
         db.actualizar_valor_servicio(self._edit_id, nuevo_valor)
         self._cerrar_edicion_inline()
-        self._cargar_servicios_dia()
+        self._cargar_servicios_pendientes()
 
     def _cerrar_edicion_inline(self):
         if self._edit_widget and self._edit_widget.winfo_exists():
@@ -585,7 +585,7 @@ class TabGestion(ctk.CTkFrame):
                 self.bases_mensajeros[self.mensajero_seleccionado["id"]] = "0"
             try: db.actualizar_base_mensajero(self.mensajero_seleccionado["id"], 0)
             except Exception: pass
-            self._cargar_servicios_dia()
+            self._cargar_servicios_pendientes()
             
             # TRIGGER UPDATE ON FACTURAS TAB
             if hasattr(self.app, 'refresh_facturas'):
