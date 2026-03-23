@@ -21,6 +21,8 @@ class TabGestion(ctk.CTkFrame):
             
         self._edit_widget: ctk.CTkEntry | None = None
         self._after_search_id: str | None = None
+        self._top_sugerencias: ctk.CTkToplevel | None = None
+        self._lista_sugerencias: tk.Listbox | None = None
 
         self._build_ui()
         self._cargar_mensajeros()
@@ -190,28 +192,22 @@ class TabGestion(ctk.CTkFrame):
         self.entry_base.bind("<FocusOut>", self._on_base_focus_out)
 
         ctk.CTkButton(
-            barra_acciones, text="➕ Agregar servicio", width=32, height=28,
+            barra_acciones, text="➕ Agregar servicio", width=140, height=32,
             fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color="#ffffff",
             command=self._asignar_servicio
-        ).pack(side="right", padx=5)
+        ).pack(side="right", padx=10)
 
         # Tabla de servicios del día
         tabla_header = ctk.CTkFrame(panel_der, fg_color="transparent")
         tabla_header.pack(fill="x", padx=15, pady=(5, 0))
 
         ctk.CTkLabel(
-            tabla_header, text="📋  Servicios Pendientes",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=COLORS["text"]
+            tabla_header, text="📋  DOMICILIOS DEL DÍA",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=COLORS["accent"]
         ).pack(side="left")
-
-        ctk.CTkLabel(
-            tabla_header, text="(Doble clic para editar valor)",
-            font=ctk.CTkFont(size=10, slant="italic"),
-            text_color=COLORS["text_muted"]
-        ).pack(side="left", padx=10)
 
         # Barra inferior con botón de liquidación y eliminar servicio
         barra_inf = ctk.CTkFrame(panel_der, fg_color="transparent")
@@ -423,10 +419,14 @@ class TabGestion(ctk.CTkFrame):
                           icon="warning", option_1="OK")
             return
 
-        db.crear_servicio(self.mensajero_seleccionado["id"], valor)
+        db.crear_servicio(self.mensajero_seleccionado["id"], valor, "")
         self.entry_valor.delete(0, "end")
         self.entry_valor.insert(0, "5000")
         self._cargar_servicios_pendientes()
+        
+        # Actualizar contador de clientes
+        if hasattr(self.app, 'refresh_clientes'):
+            self.app.refresh_clientes()
 
     def _cargar_servicios_pendientes(self):
         self._limpiar_tabla_servicios()
@@ -522,7 +522,10 @@ class TabGestion(ctk.CTkFrame):
 
         entry.bind("<Return>", self._confirmar_edicion_inline)
         entry.bind("<Escape>", lambda e: self._cerrar_edicion_inline())
-        entry.bind("<FocusOut>", lambda e: self._cerrar_edicion_inline())
+        entry.bind("<FocusOut>", lambda e: self._on_inline_focus_out(e))
+
+        if columna == "#3":
+            entry.bind("<KeyRelease>", lambda e: self._autocomplete_key_release(e, entry))
 
     def _confirmar_edicion_inline(self, event=None):
         if not self._edit_widget: return
@@ -532,6 +535,9 @@ class TabGestion(ctk.CTkFrame):
             db.actualizar_descripcion_servicio(self._edit_id, nueva_desc)
             self._cerrar_edicion_inline()
             self._cargar_servicios_pendientes()
+            # Actualizar contador de clientes
+            if hasattr(self.app, 'refresh_clientes'):
+                self.app.refresh_clientes()
             return
 
         try:
@@ -620,3 +626,28 @@ class TabGestion(ctk.CTkFrame):
             )
 
         VentanaResumen(self.app, datos_liquidacion, confirmar_final)
+
+    # ── Autocomplete Logic ─────────────────────────────────────────────
+
+    def _autocomplete_key_release(self, event, entry):
+        # Ignorar teclas que no sean letras, números o espacios (como Backspace, Flechas, etc)
+        if event.keysym in ("BackSpace", "Delete", "Left", "Right", "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Return", "Escape", "Tab"):
+            return
+
+        texto = entry.get()
+        if not texto: return
+
+        # Buscar sugerencia (solo que empiecen por el texto ingresado)
+        sugerencias = db.sugerir_clientes(texto)
+        if sugerencias:
+            sugerencia = sugerencias[0]
+            if sugerencia.lower().startswith(texto.lower()):
+                # Insertar el resto y seleccionarlo
+                pos = len(texto)
+                entry.delete(0, "end")
+                entry.insert(0, sugerencia)
+                entry.select_range(pos, "end")
+                entry.icursor(pos) 
+
+    def _on_inline_focus_out(self, event):
+        self._cerrar_edicion_inline()

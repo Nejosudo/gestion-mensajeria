@@ -188,3 +188,65 @@ class FormularioMensajero(ctk.CTkToplevel):
             return
         self.callback(nombre, telefono, self.mensajero["id"] if self.mensajero else None)
         self.destroy()
+
+class FormularioCliente(ctk.CTkToplevel):
+    """Ventana modal para Crear y Editar clientes."""
+    def __init__(self, parent, callback, cliente=None):
+        super().__init__(parent)
+        self.callback = callback
+        self.cliente = cliente
+
+        self.title("👥 Datos del Cliente")
+        self.geometry("400x480")
+        self.configure(fg_color=COLORS["bg_card"])
+        self.transient(parent)
+        
+        self.update_idletasks()
+        if self.master and self.master.winfo_exists():
+            x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
+            y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (480 // 2)
+            self.geometry(f"+{x}+{y}")
+            
+        self.lift()
+        self.grab_set()
+
+        ctk.CTkLabel(self, text="GESTIÓN DE CLIENTE", font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["accent"]).pack(pady=20)
+        form = ctk.CTkFrame(self, fg_color="transparent")
+        form.pack(fill="x", padx=40)
+
+        ctk.CTkLabel(form, text="Nombre Completo:", text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.entry_nombre = ctk.CTkEntry(form, height=35, fg_color=COLORS["bg_input"])
+        self.entry_nombre.pack(fill="x", pady=(2, 10))
+
+        ctk.CTkLabel(form, text="Dirección:", text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.entry_dir = ctk.CTkEntry(form, height=35, fg_color=COLORS["bg_input"])
+        self.entry_dir.pack(fill="x", pady=(2, 10))
+
+        ctk.CTkLabel(form, text="Teléfono:", text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.entry_tel = ctk.CTkEntry(form, height=35, fg_color=COLORS["bg_input"])
+        self.entry_tel.pack(fill="x", pady=(2, 10))
+
+        if cliente:
+            self.entry_nombre.insert(0, cliente["nombre"])
+            self.entry_dir.insert(0, cliente.get("direccion", ""))
+            self.entry_tel.insert(0, cliente.get("telefono", ""))
+
+        self.btn_guardar = ctk.CTkButton(
+            self, text="💾 Guardar Clientes" if cliente else "➕ Registrar Cliente",
+            fg_color=COLORS["success"], hover_color="#219150", height=45,
+            font=ctk.CTkFont(weight="bold"),
+            command=self._guardar
+        )
+        self.btn_guardar.pack(fill="x", padx=40, pady=25)
+
+    def _guardar(self):
+        nombre = self.entry_nombre.get().strip()
+        direccion = self.entry_dir.get().strip()
+        telefono = self.entry_tel.get().strip()
+
+        if not nombre:
+            CTkMessagebox(title="Error", message="El nombre es obligatorio.", icon="warning")
+            return
+            
+        self.callback(nombre, direccion, telefono, self.cliente["id"] if self.cliente else None)
+        self.destroy()

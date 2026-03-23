@@ -1,51 +1,12 @@
 import customtkinter as ctk
 import tkinter.ttk as ttk
 from datetime import datetime
-from core.config import COLORS, fmt_moneda
+from core.config import COLORS, fmt_moneda, CTkToolTip
 from database import database as db
 from CTkMessagebox import CTkMessagebox
 from tkcalendar import DateEntry
 import tkinter as tk
 
-class CTkToolTip:
-    def __init__(self, widget, text, delay=350):
-        self.widget = widget
-        self.text = text
-        self.delay = delay
-        self.tooltip = None
-        self.id = None
-        self.widget.bind("<Enter>", self.on_enter)
-        self.widget.bind("<Leave>", self.on_leave)
-        self.widget.bind("<Button-1>", self.on_leave)
-
-    def on_enter(self, event=None):
-        self.id = self.widget.after(self.delay, self.show_tooltip)
-
-    def on_leave(self, event=None):
-        if self.id:
-            self.widget.after_cancel(self.id)
-            self.id = None
-        self.hide_tooltip()
-
-    def show_tooltip(self):
-        if self.tooltip or not self.text: return
-        x = self.widget.winfo_pointerx() + 10
-        y = self.widget.winfo_pointery() + 10
-        self.tooltip = tw = ctk.CTkToplevel(self.widget)
-        tw.wm_overrideredirect(True)
-        tw.wm_geometry(f"+{x}+{y}")
-        tw.attributes("-topmost", True)
-        label = ctk.CTkLabel(tw, text=self.text, fg_color="#333333", text_color="white", 
-                             corner_radius=6, padx=8, pady=4, font=ctk.CTkFont(size=11))
-        label.pack()
-
-    def hide_tooltip(self):
-        if self.tooltip:
-            try:
-                self.tooltip.destroy()
-            except:
-                pass
-            self.tooltip = None
 
 class TabFinanzas(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):

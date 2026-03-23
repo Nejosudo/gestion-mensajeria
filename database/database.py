@@ -84,15 +84,39 @@ def init_db():
         );
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Clientes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre      TEXT    NOT NULL UNIQUE,
+            direccion   TEXT    DEFAULT '',
+            telefono    TEXT    DEFAULT '',
+            fecha_registro TEXT NOT NULL
+        );
+    """)
+
+    # --- Migración: Clientes columns ---
+    try:
+        cursor.execute("PRAGMA table_info(Clientes);")
+        cols = [c[1] for c in cursor.fetchall()]
+        if "fecha_registro" not in cols:
+            cursor.execute("ALTER TABLE Clientes ADD COLUMN fecha_registro TEXT DEFAULT '';")
+            conn.commit()
+    except Exception as e:
+        print("[Migración Clientes]", e)
+
     # --- Migración: Agregar columnas faltantes si la tabla ya existía pero es vieja ---
     try:
         cursor.execute("PRAGMA table_info(Servicios);")
         cols = [c[1] for c in cursor.fetchall()]
         if "liquidacion_id" not in cols:
             cursor.execute("ALTER TABLE Servicios ADD COLUMN liquidacion_id INTEGER NULL;")
-            conn.commit()
-    except Exception:
-        pass
+        if "cliente_id" not in cols:
+            cursor.execute("ALTER TABLE Servicios ADD COLUMN cliente_id INTEGER NULL;")
+        if "cliente_nombre" not in cols:
+            cursor.execute("ALTER TABLE Servicios ADD COLUMN cliente_nombre TEXT NULL;")
+        conn.commit()
+    except Exception as e:
+        print("[Migración Servicios Cols]", e)
 
     try:
         cursor.execute("PRAGMA table_info(Mensajeros);")
@@ -253,13 +277,20 @@ def actualizar_base_mensajero(id_: int, base: float):
 
 # ── Servicios ────────────────────────────────────────────────────────
 
-def crear_servicio(mensajero_id: int, valor: float = 5000) -> int:
+def crear_servicio(mensajero_id: int, valor: float = 5000, descripcion: str = "") -> int:
     conn = get_connection()
     cursor = conn.cursor()
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Intentar buscar un cliente con ese nombre para vincularlo
+    cliente_id = None
+    if descripcion:
+        c = cursor.execute("SELECT id FROM Clientes WHERE nombre = ?", (descripcion.strip(),)).fetchone()
+        if c: cliente_id = c[0]
+
     cursor.execute(
-        "INSERT INTO Servicios (mensajero_id, valor, fecha, descripcion) VALUES (?, ?, ?, '')",
-        (mensajero_id, valor, fecha)
+        "INSERT INTO Servicios (mensajero_id, valor, fecha, descripcion, cliente_id, cliente_nombre) VALUES (?, ?, ?, ?, ?, ?)",
+        (mensajero_id, valor, fecha, descripcion, cliente_id, descripcion if cliente_id else None)
     )
     conn.commit()
     nuevo_id = cursor.lastrowid
@@ -295,9 +326,20 @@ def actualizar_valor_servicio(id_servicio: int, nuevo_valor: float):
     conn.commit()
     conn.close()
 
-def actualizar_descripcion_servicio(id_servicio: int, nueva_desc: str):
+def actualizar_descripcion_servicio(id_servicio: int, descripcion: str):
     conn = get_connection()
-    conn.execute("UPDATE Servicios SET descripcion=? WHERE id=?", (nueva_desc, id_servicio))
+    cursor = conn.cursor()
+    
+    # Intentar vincular cliente si el nombre coincide
+    cliente_id = None
+    if descripcion:
+        c = cursor.execute("SELECT id FROM Clientes WHERE nombre = ?", (descripcion.strip(),)).fetchone()
+        if c: cliente_id = c[0]
+
+    cursor.execute(
+        "UPDATE Servicios SET descripcion=?, cliente_id=?, cliente_nombre=? WHERE id=?", 
+        (descripcion, cliente_id, descripcion if cliente_id else None, id_servicio)
+    )
     conn.commit()
     conn.close()
 
@@ -483,3 +525,61 @@ def obtener_liquidaciones(filtro: str = "todo") -> list[dict]:
 
     conn.close()
     return [dict(row) for row in rows]
+# ── Clientes ────────────────────────────────────────────────────────
+
+def crear_cliente(nombre: str, direccion: str = "", telefono: str = "") -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        cursor.execute(
+            "INSERT INTO Clientes (nombre, direccion, telefono, fecha_registro) VALUES (?, ?, ?, ?)",
+            (nombre, direccion, telefono, fecha)
+        )
+        conn.commit()
+        nuevo_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        nuevo_id = 0
+    conn.close()
+    return nuevo_id if nuevo_id is not None else 0
+
+def obtener_clientes(busqueda: str = "") -> list[dict]:
+    conn = get_connection()
+    query = """
+        SELECT C.*, 
+               (SELECT COUNT(*) FROM Servicios WHERE cliente_id = C.id OR cliente_nombre = C.nombre) as total_servicios,
+               (SELECT MAX(fecha) FROM Servicios WHERE cliente_id = C.id OR cliente_nombre = C.nombre) as ultima_fecha
+        FROM Clientes C
+    """
+    params = []
+    if busqueda:
+        query += " WHERE C.nombre LIKE ? OR C.direccion LIKE ? OR C.telefono LIKE ?"
+        params = [f"%{busqueda}%", f"%{busqueda}%", f"%{busqueda}%"]
+    
+    query += " ORDER BY C.nombre"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def actualizar_cliente(id_: int, nombre: str, direccion: str, telefono: str):
+    conn = get_connection()
+    conn.execute("UPDATE Clientes SET nombre=?, direccion=?, telefono=? WHERE id=?", (nombre, direccion, telefono, id_))
+    conn.commit()
+    conn.close()
+
+def eliminar_cliente(id_: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM Clientes WHERE id=?", (id_,))
+    conn.commit()
+    conn.close()
+
+def sugerir_clientes(busqueda: str) -> list[str]:
+    """Retorna una lista de nombres de clientes que coincidan con el inicio de la búsqueda."""
+    if not busqueda: return []
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT nombre FROM Clientes WHERE nombre LIKE ? LIMIT 5",
+        (f"{busqueda}%",)
+    ).fetchall()
+    conn.close()
+    return [r["nombre"] for r in rows]

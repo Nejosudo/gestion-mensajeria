@@ -8,6 +8,7 @@ from core.config import COLORS
 from ui.tabs.tab_gestion import TabGestion
 from ui.tabs.tab_facturas import TabFacturas
 from ui.tabs.tab_finanzas import TabFinanzas
+from ui.tabs.tab_clientes import TabClientes
 
 # ── Configuración global ──
 ctk.set_appearance_mode("light")
@@ -133,19 +134,22 @@ class App(ctk.CTk):
             segmented_button_selected_hover_color=COLORS["accent_hover"],
             segmented_button_unselected_color=COLORS["bg_card"],
             segmented_button_unselected_hover_color=COLORS["border"],
-            corner_radius=12
+            corner_radius=12,
+            command=self._on_tab_switch
         )
         self.tabview.pack(fill="both", expand=True, padx=15, pady=(5, 15))
 
         # Añadir las pestañas como Frames vacíos primero
         tab1 = self.tabview.add("🏍️  Gestión de Mensajeros")
-        tab2 = self.tabview.add("📊  Facturas e Informes")
-        tab3 = self.tabview.add("💰  Ingresos y Gastos")
+        tab2 = self.tabview.add("👥  Gestión de Clientes")
+        tab3 = self.tabview.add("📊  Facturas e Informes")
+        tab4 = self.tabview.add("💰  Ingresos y Gastos")
 
         # Inyectar las instancias modulares
         self.tab_gestion = TabGestion(tab1, app_controller=self)
-        self.tab_facturas = TabFacturas(tab2)
-        self.tab_finanzas = TabFinanzas(tab3)
+        self.tab_clientes = TabClientes(tab2)
+        self.tab_facturas = TabFacturas(tab3)
+        self.tab_finanzas = TabFinanzas(tab4)
 
         # Forzar color negro en el texto de las pestañas
         try:
@@ -157,12 +161,24 @@ class App(ctk.CTk):
         except Exception:
             pass
 
+    def _on_tab_switch(self):
+        tab = self.tabview.get()
+        if "Clientes" in tab and hasattr(self, 'tab_clientes'):
+            self.tab_clientes.reload_data()
+        elif "Facturas" in tab and hasattr(self, 'tab_facturas'):
+            self.tab_facturas.reload_data()
+
     def refresh_facturas(self):
         """Llamado desde tab_gestion cuando se ejecuta una liquidación."""
         if hasattr(self, 'tab_facturas'):
             self.tab_facturas.reload_data()
         if hasattr(self, 'tab_finanzas'):
             self.tab_finanzas.reload_data()
+
+    def refresh_clientes(self):
+        """Llamado desde tab_gestion cuando se asigna un cliente."""
+        if hasattr(self, 'tab_clientes'):
+            self.tab_clientes.reload_data()
 
 if __name__ == "__main__":
     app = App()
