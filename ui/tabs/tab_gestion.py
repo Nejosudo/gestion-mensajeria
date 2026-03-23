@@ -675,6 +675,7 @@ class TabGestion(ctk.CTkFrame):
             try: db.actualizar_base_mensajero(self.mensajero_seleccionado["id"], 0)
             except Exception: pass
             self._cargar_servicios_pendientes()
+            self._actualizar_status_visual_mensajero(self.mensajero_seleccionado["id"])
             
             # TRIGGER UPDATE ON FACTURAS TAB
             if hasattr(self.app, 'refresh_facturas'):
