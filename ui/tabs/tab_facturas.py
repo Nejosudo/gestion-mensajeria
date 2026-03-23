@@ -175,7 +175,7 @@ class TabFacturas(ctk.CTkFrame):
         ventana.configure(fg_color=COLORS["bg_card"])
         ventana.transient(parent)
         # Centrar usando la ventana raíz real
-        ventana.update_idletasks()
+        ventana.update()
         root = parent.winfo_toplevel()
         x = root.winfo_x() + (root.winfo_width() // 2) - (ancho // 2)
         y = root.winfo_y() + (root.winfo_height() // 2) - (alto // 2)

@@ -277,14 +277,14 @@ class TabFinanzas(ctk.CTkFrame):
         modal.geometry("350x250")
         modal.configure(fg_color=COLORS["bg_card"])
         modal.transient(self.winfo_toplevel())
-        modal.grab_set()
 
-        # Centrar
-        modal.update_idletasks()
+        # Centrar y mostrar
+        modal.update()
         root = self.winfo_toplevel()
         x = root.winfo_x() + (root.winfo_width() // 2) - (350 // 2)
         y = root.winfo_y() + (root.winfo_height() // 2) - (250 // 2)
         modal.geometry(f"+{x}+{y}")
+        modal.grab_set()
 
         ctk.CTkLabel(modal, text="Descripción del Gasto:", font=ctk.CTkFont(size=13)).pack(pady=(20, 5))
         entry_desc = ctk.CTkEntry(modal, width=250, placeholder_text="Ej: Combustible, Papelería...")
@@ -297,9 +297,11 @@ class TabFinanzas(ctk.CTkFrame):
         def guardar():
             desc = entry_desc.get().strip()
             try:
-                monto = float(entry_monto.get().replace(".", "").replace(",", ""))
-                if not desc: throw
-            except:
+                monto_str = entry_monto.get().replace(".", "").replace(",", "").strip()
+                if not monto_str or not desc:
+                    raise ValueError("Campos vacíos")
+                monto = float(monto_str)
+            except ValueError:
                 CTkMessagebox(title="Error", message="Ingresa una descripción y un monto válido.", icon="cancel")
                 return
             
@@ -331,14 +333,14 @@ class TabFinanzas(ctk.CTkFrame):
         modal.geometry("320x180")
         modal.configure(fg_color=COLORS["bg_card"])
         modal.transient(self.winfo_toplevel())
-        modal.grab_set()
 
         # Centrar
-        modal.update_idletasks()
+        modal.update()
         root = self.winfo_toplevel()
         x = root.winfo_x() + (root.winfo_width() // 2) - (320 // 2)
         y = root.winfo_y() + (root.winfo_height() // 2) - (180 // 2)
         modal.geometry(f"+{x}+{y}")
+        modal.grab_set()
 
         ctk.CTkLabel(modal, text=mensaje, font=ctk.CTkFont(size=12)).pack(pady=(20, 10), padx=20)
         entry_pass = ctk.CTkEntry(modal, width=200, show="*")

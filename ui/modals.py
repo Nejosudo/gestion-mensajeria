@@ -14,11 +14,12 @@ class VentanaResumen(ctk.CTkToplevel):
         # Centrar desde el principio
         ancho = 400
         alto = 580
-        self.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (ancho // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (alto // 2)
-        if self.winfo_exists():
-            self.geometry(f"{ancho}x{alto}+{x}+{y}")
+        self.update()
+        if parent.winfo_exists():
+            x = parent.winfo_x() + (parent.winfo_width() // 2) - (ancho // 2)
+            y = parent.winfo_y() + (parent.winfo_height() // 2) - (alto // 2)
+            if self.winfo_exists():
+                self.geometry(f"{ancho}x{alto}+{x}+{y}")
             
         self.lift()
         self.grab_set()
@@ -130,7 +131,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.transient(parent)
         
         # Centrar ventana
-        self.update_idletasks()
+        self.update()
         if self.master and self.master.winfo_exists():
             x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
             y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (350 // 2)
@@ -201,7 +202,7 @@ class FormularioCliente(ctk.CTkToplevel):
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
         
-        self.update_idletasks()
+        self.update()
         if self.master and self.master.winfo_exists():
             x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
             y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (480 // 2)

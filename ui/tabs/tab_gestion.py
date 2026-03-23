@@ -5,6 +5,7 @@ from CTkMessagebox import CTkMessagebox
 from core.config import COLORS, fmt_moneda
 from database import database as db
 from ui.modals import FormularioMensajero, VentanaResumen
+import tkinter as tk
 
 class TabGestion(ctk.CTkFrame):
     def __init__(self, parent, app_controller, **kwargs):
@@ -87,7 +88,7 @@ class TabGestion(ctk.CTkFrame):
             dialog.resizable(False, False)
             dialog.transient(self.app)
             # Centrar
-            dialog.update_idletasks()
+            dialog.update()
             x = self.app.winfo_x() + (self.app.winfo_width() // 2) - (320 // 2)
             y = self.app.winfo_y() + (self.app.winfo_height() // 2) - (150 // 2)
             dialog.geometry(f"320x150+{x}+{y}")

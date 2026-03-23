@@ -3,7 +3,6 @@ from CTkMessagebox import CTkMessagebox
 from datetime import datetime
 from database import database as db
 import platform
-
 from core.config import COLORS
 from ui.tabs.tab_gestion import TabGestion
 from ui.tabs.tab_facturas import TabFacturas
