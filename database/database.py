@@ -243,13 +243,18 @@ def crear_mensajero(nombre: str, telefono: str) -> int:
 
 def obtener_mensajeros(busqueda: str = "") -> list[dict]:
     conn = get_connection()
+    query = """
+        SELECT M.*, 
+               (SELECT COUNT(*) FROM Servicios WHERE mensajero_id = M.id AND liquidacion_id IS NULL) as servicios_pendientes
+        FROM Mensajeros M
+    """
+    params = []
     if busqueda:
-        rows = conn.execute(
-            "SELECT * FROM Mensajeros WHERE nombre LIKE ? OR telefono LIKE ? ORDER BY nombre",
-            (f"%{busqueda}%", f"%{busqueda}%")
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM Mensajeros ORDER BY nombre").fetchall()
+        query += " WHERE M.nombre LIKE ? OR M.telefono LIKE ?"
+        params = [f"%{busqueda}%", f"%{busqueda}%"]
+    
+    query += " ORDER BY M.nombre"
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
