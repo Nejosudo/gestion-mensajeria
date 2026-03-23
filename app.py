@@ -119,11 +119,12 @@ class App(ctk.CTk):
 
         self.lbl_fecha = ctk.CTkLabel(
             header,
-            text=datetime.now().strftime("📅  %d / %B / %Y"),
-            font=ctk.CTkFont(size=13),
-            text_color=COLORS["text_muted"]
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=COLORS["text"]
         )
         self.lbl_fecha.pack(side="right", padx=20)
+        self._update_clock()
 
         # ── Tabview ──
         self.tabview = ctk.CTkTabview(
@@ -155,11 +156,18 @@ class App(ctk.CTk):
         try:
             self.tabview._segmented_button.configure(
                 text_color="#000000",
-                selected_text_color="#000000",
-                unselected_text_color="#000000"
+                selected_text_color="#3a86ff", # Azul acento cuando está seleccionado
+                unselected_text_color="#636e72"
             )
         except Exception:
             pass
+
+    def _update_clock(self):
+        """Actualiza la hora cada segundo."""
+        ahora = datetime.now()
+        texto = ahora.strftime("📅 %d/%m/%Y   —   🕒 %H:%M:%S")
+        self.lbl_fecha.configure(text=texto)
+        self.after(1000, self._update_clock)
 
     def _on_tab_switch(self):
         tab = self.tabview.get()
