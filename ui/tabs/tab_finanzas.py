@@ -4,6 +4,48 @@ from datetime import datetime
 from core.config import COLORS, fmt_moneda
 from database import database as db
 from CTkMessagebox import CTkMessagebox
+from tkcalendar import DateEntry
+import tkinter as tk
+
+class CTkToolTip:
+    def __init__(self, widget, text, delay=350):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tooltip = None
+        self.id = None
+        self.widget.bind("<Enter>", self.on_enter)
+        self.widget.bind("<Leave>", self.on_leave)
+        self.widget.bind("<Button-1>", self.on_leave)
+
+    def on_enter(self, event=None):
+        self.id = self.widget.after(self.delay, self.show_tooltip)
+
+    def on_leave(self, event=None):
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+        self.hide_tooltip()
+
+    def show_tooltip(self):
+        if self.tooltip or not self.text: return
+        x = self.widget.winfo_pointerx() + 10
+        y = self.widget.winfo_pointery() + 10
+        self.tooltip = tw = ctk.CTkToplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tw.attributes("-topmost", True)
+        label = ctk.CTkLabel(tw, text=self.text, fg_color="#333333", text_color="white", 
+                             corner_radius=6, padx=8, pady=4, font=ctk.CTkFont(size=11))
+        label.pack()
+
+    def hide_tooltip(self):
+        if self.tooltip:
+            try:
+                self.tooltip.destroy()
+            except:
+                pass
+            self.tooltip = None
 
 class TabFinanzas(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
@@ -25,15 +67,60 @@ class TabFinanzas(ctk.CTkFrame):
         ).pack(side="left", padx=15, pady=12)
 
         self.filtro_var = ctk.StringVar(value="todo")
-        for texto, valor in [("Hoy", "hoy"), ("Esta Semana", "semana"),
-                             ("Este Mes", "mes"), ("Todo", "todo")]:
-            ctk.CTkRadioButton(
-                filtros_frame, text=texto, variable=self.filtro_var, value=valor,
+
+        # Configuración de Radios (SIN TEXTO NI ICONOS, SOLO TOOLTIP)
+        opciones = [
+            ("", "hoy", "Hoy"),
+            ("", "semana", "Esta Semana"),
+            ("", "mes", "Este Mes"),
+            ("", "todo", "Todo el historial")
+        ]
+
+        for icono, valor, desc in opciones:
+            rb = ctk.CTkRadioButton(
+                filtros_frame, text=icono, variable=self.filtro_var, value=valor,
                 fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
                 border_color=COLORS["border"], text_color=COLORS["text"],
-                font=ctk.CTkFont(size=12),
-                command=self.reload_data
-            ).pack(side="left", padx=10, pady=12)
+                font=ctk.CTkFont(size=14), width=28,
+                command=self._on_filter_changed
+            )
+            rb.pack(side="left", padx=2, pady=12)
+            CTkToolTip(rb, desc)
+
+        # Filtro por calendario (Condicional)
+        self.rb_fecha = ctk.CTkRadioButton(
+            filtros_frame, text="📆", variable=self.filtro_var, value="fecha",
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
+            border_color=COLORS["border"], text_color=COLORS["text"],
+            font=ctk.CTkFont(size=14, weight="bold"), width=40,
+            command=self._on_filter_changed
+        )
+        self.rb_fecha.pack(side="left", padx=(10, 5), pady=12)
+        CTkToolTip(self.rb_fecha, "Filtrar por Rango de Fechas")
+
+        # Contenedor de calendarios (OCULTO POR DEFECTO)
+        self.cal_container = ctk.CTkFrame(filtros_frame, fg_color="transparent")
+        # No se empaqueta inicialmente
+
+        self.lbl_desde = ctk.CTkLabel(self.cal_container, text="Desde:", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
+        self.lbl_desde.pack(side="left", padx=2)
+        self.cal_desde = DateEntry(self.cal_container, width=10, background=COLORS["accent"],
+                                     foreground='white', borderwidth=1, date_pattern='yyyy-mm-dd',
+                                     locale='es_ES')
+        self.cal_desde.pack(side="left", padx=2)
+        
+        self.lbl_hasta = ctk.CTkLabel(self.cal_container, text="Hasta:", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
+        self.lbl_hasta.pack(side="left", padx=2)
+        self.cal_hasta = DateEntry(self.cal_container, width=10, background=COLORS["accent"],
+                                     foreground='white', borderwidth=1, date_pattern='yyyy-mm-dd',
+                                     locale='es_ES')
+        self.cal_hasta.pack(side="left", padx=2)
+        
+        self.cal_desde.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
+        self.cal_hasta.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
+
+        # Inicializar estado de calendarios
+        self._actualizar_estado_calendarios()
 
         # --- Dashboard ---
         dash_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -59,10 +146,23 @@ class TabFinanzas(ctk.CTkFrame):
         f_ingresos = ctk.CTkFrame(tablas_contenedor, fg_color=COLORS["bg_card"], corner_radius=12)
         f_ingresos.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         
-        ctk.CTkLabel(f_ingresos, text="📈 Detalle de Ingresos (Comisiones + Aseo)", 
-                    font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["accent"]).pack(pady=10)
+        # Configurar grid para f_ingresos
+        f_ingresos.grid_rowconfigure(1, weight=1)
+        f_ingresos.grid_columnconfigure(0, weight=1)
         
-        self.tree_ingresos = self._crear_tabla(f_ingresos, ("id", "fecha", "comision", "aseo", "total"))
+        # Header Ingresos
+        header_ingresos = ctk.CTkFrame(f_ingresos, fg_color="transparent", height=40)
+        header_ingresos.grid(row=0, column=0, sticky="ew", padx=15, pady=5)
+        header_ingresos.pack_propagate(False)
+
+        ctk.CTkLabel(header_ingresos, text="📈 Detalle de Ingresos (Comisiones + Aseo)", 
+                    font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["accent"]).pack(side="left", pady=5)
+        
+        # Rediseño de la lógica de tablas para usar grid
+        self.tree_ingresos_frame = ctk.CTkFrame(f_ingresos, fg_color="transparent")
+        self.tree_ingresos_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        self.tree_ingresos = self._setup_treeview(self.tree_ingresos_frame, ("id", "fecha", "comision", "aseo", "total"))
+        
         self.tree_ingresos.heading("id", text="ID")
         self.tree_ingresos.heading("fecha", text="Fecha")
         self.tree_ingresos.heading("comision", text="Comisión")
@@ -72,22 +172,43 @@ class TabFinanzas(ctk.CTkFrame):
         for col, width in zip(("id", "fecha", "comision", "aseo", "total"), (40, 140, 90, 80, 100)):
             self.tree_ingresos.column(col, width=width, anchor="center")
 
+        # Footer Ingresos
+        self.f_footer_ing = ctk.CTkFrame(f_ingresos, fg_color=COLORS["bg_input"], height=40, corner_radius=8)
+        self.f_footer_ing.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 15))
+        self.lbl_total_ing_footer = ctk.CTkLabel(self.f_footer_ing, text="Total: $0", 
+                                                font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["success"])
+        self.lbl_total_ing_footer.pack(side="right", padx=20, pady=5)
+
         # Columna Gastos
         f_gastos = ctk.CTkFrame(tablas_contenedor, fg_color=COLORS["bg_card"], corner_radius=12)
         f_gastos.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
-        
-        header_gastos = ctk.CTkFrame(f_gastos, fg_color="transparent")
-        header_gastos.pack(fill="x", padx=15, pady=5)
+
+        # Configurar grid para f_gastos
+        f_gastos.grid_rowconfigure(2, weight=1)
+        f_gastos.grid_columnconfigure(0, weight=1)
+
+        header_gastos = ctk.CTkFrame(f_gastos, fg_color="transparent", height=40)
+        header_gastos.grid(row=0, column=0, sticky="ew", padx=15, pady=5)
+        header_gastos.pack_propagate(False)
         
         ctk.CTkLabel(header_gastos, text="📉 Detalle de Gastos", 
-                    font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["danger"]).pack(side="left")
+                    font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["danger"]).pack(side="left", pady=5)
         
+        # Invertir orden: Agregar Gasto a la derecha
         ctk.CTkButton(header_gastos, text="➕ Agregar Gasto", width=120, height=28,
                      fg_color=COLORS["danger"], hover_color="#c0392b",
                      font=ctk.CTkFont(size=11, weight="bold"),
-                     command=self._abrir_modal_gasto).pack(side="right")
+                     command=self._abrir_modal_gasto).pack(side="right", padx=(5, 0))
 
-        self.tree_gastos = self._crear_tabla(f_gastos, ("id", "fecha", "descripcion", "monto"))
+        ctk.CTkButton(header_gastos, text="🗑️ Eliminar", width=80, height=28,
+                     fg_color="transparent", border_width=1, border_color=COLORS["danger"],
+                     text_color=COLORS["danger"], font=ctk.CTkFont(size=11, weight="bold"),
+                     command=self._confirmar_eliminar_gasto).pack(side="right")
+
+        self.tree_gastos_frame = ctk.CTkFrame(f_gastos, fg_color="transparent")
+        self.tree_gastos_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
+        self.tree_gastos = self._setup_treeview(self.tree_gastos_frame, ("id", "fecha", "descripcion", "monto"))
+
         self.tree_gastos.heading("id", text="ID")
         self.tree_gastos.heading("fecha", text="Fecha")
         self.tree_gastos.heading("descripcion", text="Descripción")
@@ -96,11 +217,12 @@ class TabFinanzas(ctk.CTkFrame):
         for col, width in zip(("id", "fecha", "descripcion", "monto"), (40, 140, 180, 100)):
             self.tree_gastos.column(col, width=width, anchor="center")
             
-        # Botón eliminar gasto
-        ctk.CTkButton(f_gastos, text="🗑️ Eliminar Gasto Seleccionado", height=32,
-                     fg_color="transparent", border_width=1, border_color=COLORS["danger"],
-                     text_color=COLORS["danger"], font=ctk.CTkFont(size=12),
-                     command=self._confirmar_eliminar_gasto).pack(pady=10)
+        # Footer Gastos
+        self.f_footer_gst = ctk.CTkFrame(f_gastos, fg_color=COLORS["bg_input"], height=40, corner_radius=8)
+        self.f_footer_gst.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 10))
+        self.lbl_total_gst_footer = ctk.CTkLabel(self.f_footer_gst, text="Total: $0", 
+                                                font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["danger"])
+        self.lbl_total_gst_footer.pack(side="right", padx=20, pady=5)
 
     def _crear_card(self, parent, titulo, valor, color):
         card = ctk.CTkFrame(parent, fg_color=COLORS["bg_card"], corner_radius=12, height=100)
@@ -111,12 +233,10 @@ class TabFinanzas(ctk.CTkFrame):
         card.lbl_valor = lbl_valor
         return card
 
-    def _crear_tabla(self, parent, columnas):
-        tabla_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        tabla_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        
-        tree = ttk.Treeview(tabla_frame, columns=columnas, show="headings", style="Dark.Treeview")
-        scrollbar = ttk.Scrollbar(tabla_frame, orient="vertical", command=tree.yview)
+    def _setup_treeview(self, parent_frame, columnas):
+        """Configura un Treeview con scrollbar dentro de un frame."""
+        tree = ttk.Treeview(parent_frame, columns=columnas, show="headings", style="Dark.Treeview")
+        scrollbar = ttk.Scrollbar(parent_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         
         scrollbar.pack(side="right", fill="y")
@@ -124,9 +244,19 @@ class TabFinanzas(ctk.CTkFrame):
         tree.tag_configure("par", background=COLORS["table_row_2"])
         return tree
 
+    def _crear_tabla(self, parent, columnas):
+        """Deprecated: Use _setup_treeview instead."""
+        tabla_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        tabla_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        return self._setup_treeview(tabla_frame, columnas)
+
     def reload_data(self):
         filtro = self.filtro_var.get()
-        
+        if filtro == "fecha":
+            f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
+            f_fin = self.cal_hasta.get_date().strftime("%Y-%m-%d")
+            filtro = f"{f_inicio}..{f_fin}"
+            
         # Cargar Ingresos (Liquidaciones)
         for item in self.tree_ingresos.get_children():
             self.tree_ingresos.delete(item)
@@ -156,10 +286,29 @@ class TabFinanzas(ctk.CTkFrame):
                 g["id"], g["fecha"], g["descripcion"], fmt_moneda(g["monto"])
             ), tags=tags)
             
-        # Actualizar Dashboard
+        # Actualizar Dashboard y Footers
         self.card_ingresos.lbl_valor.configure(text=fmt_moneda(total_ingresos))
         self.card_gastos.lbl_valor.configure(text=fmt_moneda(total_gastos))
         self.card_balance.lbl_valor.configure(text=fmt_moneda(total_ingresos - total_gastos))
+
+        self.lbl_total_ing_footer.configure(text=f"Total: {fmt_moneda(total_ingresos)}")
+        self.lbl_total_gst_footer.configure(text=f"Total: {fmt_moneda(total_gastos)}")
+
+    def _on_filter_changed(self):
+        self._actualizar_estado_calendarios()
+        self.reload_data()
+
+    def _actualizar_estado_calendarios(self):
+        es_fecha = self.filtro_var.get() == "fecha"
+        if es_fecha:
+            self.cal_container.pack(side="left", padx=5)
+        else:
+            self.cal_container.pack_forget()
+
+    def _on_date_changed(self):
+        """Al cambiar fecha en el calendario, activa el radio de fecha y recarga."""
+        self.filtro_var.set("fecha")
+        self.reload_data()
 
     def _abrir_modal_gasto(self):
         modal = ctk.CTkToplevel(self)
@@ -207,10 +356,46 @@ class TabFinanzas(ctk.CTkFrame):
         
         item = self.tree_gastos.item(seleccion[0])
         id_gasto = item["values"][0]
-        
-        msg = CTkMessagebox(title="Confirmar", message=f"¿Eliminar el gasto #{id_gasto}?", 
-                           icon="question", option_1="Cancelar", option_2="Eliminar")
-        
-        if msg.get() == "Eliminar":
-            db.eliminar_gasto(id_gasto)
-            self.reload_data()
+
+        # Solicitar contraseña antes de proceder
+        self._solicitar_password(
+            titulo="Seguridad",
+            mensaje=f"Ingresa la contraseña para eliminar el gasto #{id_gasto}:",
+            callback=lambda: self._eliminar_gasto_confirmado(id_gasto)
+        )
+
+    def _solicitar_password(self, titulo, mensaje, callback):
+        modal = ctk.CTkToplevel(self)
+        modal.title(titulo)
+        modal.geometry("320x180")
+        modal.configure(fg_color=COLORS["bg_card"])
+        modal.transient(self.winfo_toplevel())
+        modal.grab_set()
+
+        # Centrar
+        modal.update_idletasks()
+        root = self.winfo_toplevel()
+        x = root.winfo_x() + (root.winfo_width() // 2) - (320 // 2)
+        y = root.winfo_y() + (root.winfo_height() // 2) - (180 // 2)
+        modal.geometry(f"+{x}+{y}")
+
+        ctk.CTkLabel(modal, text=mensaje, font=ctk.CTkFont(size=12)).pack(pady=(20, 10), padx=20)
+        entry_pass = ctk.CTkEntry(modal, width=200, show="*")
+        entry_pass.pack(pady=5)
+        entry_pass.focus_set()
+
+        def verificar(event=None):
+            if entry_pass.get() == "ya le llego":
+                modal.destroy()
+                callback()
+            else:
+                CTkMessagebox(title="Error", message="Contraseña incorrecta", icon="cancel")
+                entry_pass.delete(0, 'end')
+
+        entry_pass.bind("<Return>", verificar)
+        ctk.CTkButton(modal, text="Verificar", fg_color=COLORS["accent"], command=verificar).pack(pady=15)
+
+    def _eliminar_gasto_confirmado(self, id_gasto):
+        db.eliminar_gasto(id_gasto)
+        self.reload_data()
+        CTkMessagebox(title="Éxito", message="Gasto eliminado correctamente.", icon="check")

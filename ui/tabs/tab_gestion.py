@@ -301,6 +301,10 @@ class TabGestion(ctk.CTkFrame):
             btn.pack(fill="x", pady=1)
 
     def _seleccionar_mensajero(self, id_: int, nombre: str, telefono: str):
+        # Limpiar búsqueda y quitar foco
+        self.entry_buscar.delete(0, "end")
+        self.focus()
+
         if self.mensajero_seleccionado and hasattr(self, 'entry_base'):
             base_cruda = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
             val_to_save = base_cruda if base_cruda else "0"

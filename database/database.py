@@ -342,6 +342,14 @@ def obtener_gastos(filtro: str = "todo") -> list[dict]:
         inicio_mes = hoy.strftime("%Y-%m-01")
         query += " WHERE fecha >= ?"
         params.append(inicio_mes)
+    elif "-" in filtro and len(filtro) == 10: # Formato YYYY-MM-DD
+        query += " WHERE fecha LIKE ?"
+        params.append(f"{filtro}%")
+    elif ".." in filtro: # Formato YYYY-MM-DD..YYYY-MM-DD
+        inicio, fin = filtro.split("..")
+        query += " WHERE fecha >= ? AND fecha <= ?"
+        params.append(f"{inicio} 00:00:00")
+        params.append(f"{fin} 23:59:59")
 
     query += " ORDER BY fecha DESC"
     rows = conn.execute(query, params).fetchall()
@@ -462,6 +470,13 @@ def obtener_liquidaciones(filtro: str = "todo") -> list[dict]:
         inicio_mes = hoy.strftime("%Y-%m-01")
         query = query_base + " WHERE L.fecha >= ? GROUP BY L.id ORDER BY L.fecha DESC"
         rows = conn.execute(query, (inicio_mes,)).fetchall()
+    elif "-" in filtro and len(filtro) == 10: # Formato YYYY-MM-DD
+        query = query_base + " WHERE L.fecha LIKE ? GROUP BY L.id ORDER BY L.fecha DESC"
+        rows = conn.execute(query, (f"{filtro}%",)).fetchall()
+    elif ".." in filtro: # Formato YYYY-MM-DD..YYYY-MM-DD
+        inicio, fin = filtro.split("..")
+        query = query_base + " WHERE L.fecha >= ? AND L.fecha <= ? GROUP BY L.id ORDER BY L.fecha DESC"
+        rows = conn.execute(query, (f"{inicio} 00:00:00", f"{fin} 23:59:59")).fetchall()
     else:
         query = query_base + " GROUP BY L.id ORDER BY L.fecha DESC"
         rows = conn.execute(query).fetchall()

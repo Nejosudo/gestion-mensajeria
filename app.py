@@ -75,11 +75,11 @@ class App(ctk.CTk):
         else:
             self.attributes("-zoomed", True)
             
-        self.deiconify()  # Muestra la ventana principal
         db.init_db()
-        
         self._init_global_styles()
         self._build_ui()
+            
+        self.deiconify()  # Muestra la ventana ya cargada
 
     def _init_global_styles(self):
         import tkinter.ttk as ttk
@@ -149,8 +149,11 @@ class App(ctk.CTk):
 
         # Forzar color negro en el texto de las pestañas
         try:
-            for btn in self.tabview._segmented_button._buttons_dict.values():
-                btn.configure(text_color=("#000000", "#000000"))
+            self.tabview._segmented_button.configure(
+                text_color="#000000",
+                selected_text_color="#000000",
+                unselected_text_color="#000000"
+            )
         except Exception:
             pass
 

@@ -4,6 +4,48 @@ from core.config import COLORS, fmt_moneda
 from database import database as db
 from database.exportador import exportar_liquidaciones
 from CTkMessagebox import CTkMessagebox
+from tkcalendar import DateEntry
+import tkinter as tk
+
+class CTkToolTip:
+    def __init__(self, widget, text, delay=350):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tooltip = None
+        self.id = None
+        self.widget.bind("<Enter>", self.on_enter)
+        self.widget.bind("<Leave>", self.on_leave)
+        self.widget.bind("<Button-1>", self.on_leave)
+
+    def on_enter(self, event=None):
+        self.id = self.widget.after(self.delay, self.show_tooltip)
+
+    def on_leave(self, event=None):
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+        self.hide_tooltip()
+
+    def show_tooltip(self):
+        if self.tooltip or not self.text: return
+        x = self.widget.winfo_pointerx() + 10
+        y = self.widget.winfo_pointery() + 10
+        self.tooltip = tw = ctk.CTkToplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tw.attributes("-topmost", True)
+        label = ctk.CTkLabel(tw, text=self.text, fg_color="#333333", text_color="white", 
+                             corner_radius=6, padx=8, pady=4, font=ctk.CTkFont(size=11))
+        label.pack()
+
+    def hide_tooltip(self):
+        if self.tooltip:
+            try:
+                self.tooltip.destroy()
+            except:
+                pass
+            self.tooltip = None
 
 class TabFacturas(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
@@ -19,18 +61,58 @@ class TabFacturas(ctk.CTkFrame):
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=COLORS["text"]
         ).pack(side="left", padx=15, pady=12)
-
         self.filtro_var = ctk.StringVar(value="todo")
 
-        for texto, valor in [("Hoy", "hoy"), ("Esta Semana", "semana"),
-                             ("Este Mes", "mes"), ("Todo", "todo")]:
-            ctk.CTkRadioButton(
-                filtros_frame, text=texto, variable=self.filtro_var, value=valor,
+        # Configuración de Radios (SIN TEXTO NI ICONOS, SOLO TOOLTIP)
+        opciones = [
+            ("", "hoy", "Hoy"),
+            ("", "semana", "Esta Semana"),
+            ("", "mes", "Este Mes"),
+            ("", "todo", "Todo el historial")
+        ]
+
+        for icono, valor, desc in opciones:
+            rb = ctk.CTkRadioButton(
+                filtros_frame, text=icono, variable=self.filtro_var, value=valor,
                 fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
                 border_color=COLORS["border"], text_color=COLORS["text"],
-                font=ctk.CTkFont(size=12),
-                command=self._cargar_liquidaciones
-            ).pack(side="left", padx=10, pady=12)
+                font=ctk.CTkFont(size=14), width=28,
+                command=self._on_filter_changed
+            )
+            rb.pack(side="left", padx=2, pady=12)
+            CTkToolTip(rb, desc)
+
+        # Filtro por calendario (Condicional)
+        self.rb_fecha = ctk.CTkRadioButton(
+            filtros_frame, text="📆", variable=self.filtro_var, value="fecha",
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
+            border_color=COLORS["border"], text_color=COLORS["text"],
+            font=ctk.CTkFont(size=14, weight="bold"), width=40,
+            command=self._on_filter_changed
+        )
+        self.rb_fecha.pack(side="left", padx=(10, 5), pady=12)
+        CTkToolTip(self.rb_fecha, "Filtrar por Rango de Fechas")
+
+        # Contenedor de calendarios (OCULTO POR DEFECTO)
+        self.cal_container = ctk.CTkFrame(filtros_frame, fg_color="transparent")
+        # No se empaqueta inicialmente
+
+        self.lbl_desde = ctk.CTkLabel(self.cal_container, text="Desde:", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
+        self.lbl_desde.pack(side="left", padx=1)
+        self.cal_desde = DateEntry(self.cal_container, width=10, background=COLORS["accent"],
+                                     foreground='white', borderwidth=1, date_pattern='yyyy-mm-dd',
+                                     locale='es_ES')
+        self.cal_desde.pack(side="left", padx=1)
+        
+        self.lbl_hasta = ctk.CTkLabel(self.cal_container, text="Hasta:", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
+        self.lbl_hasta.pack(side="left", padx=1)
+        self.cal_hasta = DateEntry(self.cal_container, width=10, background=COLORS["accent"],
+                                     foreground='white', borderwidth=1, date_pattern='yyyy-mm-dd',
+                                     locale='es_ES')
+        self.cal_hasta.pack(side="left", padx=1)
+        
+        self.cal_desde.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
+        self.cal_hasta.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
 
         ctk.CTkButton(
             filtros_frame, text="📥 Exportar a Excel", height=34, width=170,
@@ -232,7 +314,13 @@ class TabFacturas(ctk.CTkFrame):
             self.tree_liquidaciones.delete(item)
 
         filtro = self.filtro_var.get()
+        if filtro == "fecha":
+            f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
+            f_fin = self.cal_hasta.get_date().strftime("%Y-%m-%d")
+            filtro = f"{f_inicio}..{f_fin}"
+            
         liquidaciones = db.obtener_liquidaciones(filtro)
+        # ...
 
         total_neto = 0
         total_comision = 0
@@ -270,10 +358,27 @@ class TabFacturas(ctk.CTkFrame):
                 text="Sin liquidaciones para el filtro seleccionado.",
                 text_color=COLORS["text_muted"]
             )
+    def reload_data(self):
+        self._cargar_liquidaciones()
+
+    def _on_filter_changed(self):
+        self._actualizar_estado_calendarios()
+        self._cargar_liquidaciones()
+
+    def _actualizar_estado_calendarios(self):
+        es_fecha = self.filtro_var.get() == "fecha"
+        if es_fecha:
+            self.cal_container.pack(side="left", padx=5)
+        else:
+            self.cal_container.pack_forget()
 
     def _exportar_excel(self):
         """Exporta las liquidaciones visibles a un archivo Excel."""
         filtro = self.filtro_var.get()
+        if filtro == "fecha":
+            f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
+            f_fin = self.cal_hasta.get_date().strftime("%Y-%m-%d")
+            filtro = f"{f_inicio}..{f_fin}"
         datos = db.obtener_liquidaciones(filtro)
 
         if not datos:
@@ -295,6 +400,11 @@ class TabFacturas(ctk.CTkFrame):
                 icon="cancel", option_1="OK"
             )
     
+    def _on_date_changed(self):
+        """Al cambiar fecha en el calendario, activa el radio de fecha y recarga."""
+        self.filtro_var.set("fecha")
+        self._on_filter_changed()
+
     def reload_data(self):
         """Recarga la tabla de forma externa."""
         self._cargar_liquidaciones()
