@@ -308,7 +308,7 @@ class TabGestion(ctk.CTkFrame):
 
             lbl_nombre = ctk.CTkLabel(
                 txt_frame, text=f"👤 {m['nombre']}",
-                font=ctk.CTkFont(size=13, weight="bold" if is_sel else "normal"),
+                font=ctk.CTkFont(size=18, weight="bold" if is_sel else "normal"),
                 text_color=COLORS["text"],
                 anchor="w",
                 wraplength=170,
@@ -318,7 +318,7 @@ class TabGestion(ctk.CTkFrame):
 
             lbl_tel = ctk.CTkLabel(
                 txt_frame, text=f"📞 {m['telefono']}",
-                font=ctk.CTkFont(size=11),
+                font=ctk.CTkFont(size=12),
                 text_color=COLORS["text_muted"],
                 anchor="w",
                 fg_color=bg_color_card
@@ -367,7 +367,7 @@ class TabGestion(ctk.CTkFrame):
             bg = COLORS["highlight"] if is_new_sel else COLORS["bg_card"]
             card.configure(fg_color=bg, border_width=1 if is_new_sel else 0, border_color=COLORS["accent"] if is_new_sel else bg)
             txt.configure(fg_color=bg)
-            ln.configure(fg_color=bg, font=ctk.CTkFont(size=13, weight="bold" if is_new_sel else "normal"))
+            ln.configure(fg_color=bg, font=ctk.CTkFont(size=18, weight="bold" if is_new_sel else "normal"))
             lt.configure(fg_color=bg)
 
         self._cargar_servicios_pendientes()
