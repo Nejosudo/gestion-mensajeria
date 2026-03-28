@@ -31,10 +31,10 @@ class TabFinanzas(ctk.CTkFrame):
 
         # Configuración de Radios (SIN TEXTO NI ICONOS, SOLO TOOLTIP)
         opciones = [
-            ("", "hoy", "Hoy"),
-            ("", "semana", "Esta Semana"),
-            ("", "mes", "Este Mes"),
-            ("", "todo", "Todo el historial")
+            ("Hoy", "hoy", "Hoy"),
+            ("Semana", "semana", "Esta Semana"),
+            ("Mes", "mes", "Este Mes"),
+            ("Todo", "todo", "Todo el historial")
         ]
 
         for icono, valor, desc in opciones:
