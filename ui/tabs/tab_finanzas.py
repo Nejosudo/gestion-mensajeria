@@ -63,19 +63,47 @@ class TabFinanzas(ctk.CTkFrame):
         self.cal_container = ctk.CTkFrame(filtros_frame, fg_color="transparent")
         # No se empaqueta inicialmente
 
-        self.lbl_desde = ctk.CTkLabel(self.cal_container, text="Desde:", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
-        self.lbl_desde.pack(side="left", padx=2)
-        self.cal_desde = DateEntry(self.cal_container, width=10, background=COLORS["accent"],
-                                     foreground='white', borderwidth=1, date_pattern='yyyy-mm-dd',
-                                     locale='es_ES')
-        self.cal_desde.pack(side="left", padx=2)
+        # --- Estilo para calendario "Desde" ---
+        self.lbl_desde = ctk.CTkLabel(self.cal_container, text="Desde:", font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text_muted"])
+        self.lbl_desde.pack(side="left", padx=(5, 5))
         
-        self.lbl_hasta = ctk.CTkLabel(self.cal_container, text="Hasta:", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
-        self.lbl_hasta.pack(side="left", padx=2)
-        self.cal_hasta = DateEntry(self.cal_container, width=10, background=COLORS["accent"],
-                                     foreground='white', borderwidth=1, date_pattern='yyyy-mm-dd',
-                                     locale='es_ES')
-        self.cal_hasta.pack(side="left", padx=2)
+        self.frame_desde = ctk.CTkFrame(self.cal_container, fg_color=COLORS["bg_input"], border_color=COLORS["border"], border_width=2, corner_radius=10, height=36)
+        self.frame_desde.pack(side="left", padx=2)
+        self.frame_desde.pack_propagate(False)
+
+        self.cal_desde = DateEntry(
+            self.frame_desde, width=12, background=COLORS["accent"],
+            foreground=COLORS["text"], borderwidth=0, date_pattern='yyyy-mm-dd',
+            locale='es_ES', font=("Segoe UI", 10),
+            headersbackground=COLORS["accent"], headersforeground='white',
+            selectbackground=COLORS["accent"], selectforeground='white',
+            normalbackground=COLORS["bg_input"], normalforeground=COLORS["text"],
+            weekendbackground=COLORS["bg_card"], weekendforeground=COLORS["text"],
+            othermonthbackground=COLORS["table_row_2"], othermonthforeground=COLORS["text_muted"],
+            relief="flat"
+        )
+        self.cal_desde.pack(padx=10, pady=0, fill="y", expand=True)
+        
+        # --- Estilo para calendario "Hasta" ---
+        self.lbl_hasta = ctk.CTkLabel(self.cal_container, text="Hasta:", font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text_muted"])
+        self.lbl_hasta.pack(side="left", padx=(10, 5))
+        
+        self.frame_hasta = ctk.CTkFrame(self.cal_container, fg_color=COLORS["bg_input"], border_color=COLORS["border"], border_width=2, corner_radius=10, height=36)
+        self.frame_hasta.pack(side="left", padx=2)
+        self.frame_hasta.pack_propagate(False)
+
+        self.cal_hasta = DateEntry(
+            self.frame_hasta, width=12, background=COLORS["accent"],
+            foreground=COLORS["text"], borderwidth=0, date_pattern='yyyy-mm-dd',
+            locale='es_ES', font=("Segoe UI", 10),
+            headersbackground=COLORS["accent"], headersforeground='white',
+            selectbackground=COLORS["accent"], selectforeground='white',
+            normalbackground=COLORS["bg_input"], normalforeground=COLORS["text"],
+            weekendbackground=COLORS["bg_card"], weekendforeground=COLORS["text"],
+            othermonthbackground=COLORS["table_row_2"], othermonthforeground=COLORS["text_muted"],
+            relief="flat"
+        )
+        self.cal_hasta.pack(padx=10, pady=0, fill="both", expand=True)
         
         self.cal_desde.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
         self.cal_hasta.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())

@@ -72,7 +72,7 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         comision = liq.get("comision_empresa", 0)
         aseo = liq.get("descuento_aseo", 0)
         ganancia_empresa = comision + aseo
-        servicios_liq = db.obtener_servicios_por_liquidacion(liq["mensajero_id"], liq["fecha"])
+        servicios_liq = db.obtener_servicios_por_liquidacion(liq["id"])
         descripciones = ", ".join([s.get("descripcion", "") for s in servicios_liq if s.get("descripcion")])
 
         valores = [
