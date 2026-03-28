@@ -224,7 +224,11 @@ class FormularioCliente(ctk.CTkToplevel):
         self.entry_dir.pack(fill="x", pady=(2, 10))
 
         ctk.CTkLabel(form, text="Teléfono:", text_color=COLORS["text_muted"]).pack(anchor="w")
-        self.entry_tel = ctk.CTkEntry(form, height=35, fg_color=COLORS["bg_input"])
+        vcmd = (self.register(self._validar_telefono), '%P')
+        self.entry_tel = ctk.CTkEntry(
+            form, height=35, fg_color=COLORS["bg_input"],
+            validate="key", validatecommand=vcmd
+        )
         self.entry_tel.pack(fill="x", pady=(2, 10))
 
         if cliente:
@@ -239,6 +243,11 @@ class FormularioCliente(ctk.CTkToplevel):
             command=self._guardar
         )
         self.btn_guardar.pack(fill="x", padx=40, pady=25)
+
+    def _validar_telefono(self, P):
+        """Valida que el teléfono solo contenga números y máximo 11 dígitos."""
+        if P == "": return True
+        return P.isdigit() and len(P) <= 11
 
     def _guardar(self):
         nombre = self.entry_nombre.get().strip()

@@ -314,12 +314,21 @@ class TabFinanzas(ctk.CTkFrame):
         modal.geometry(f"+{x}+{y}")
         modal.grab_set()
 
+        def solo_numeros(P):
+            if P == "": return True
+            return P.isdigit()
+
+        vcmd = (modal.register(solo_numeros), '%P')
+        
         ctk.CTkLabel(modal, text="Descripción del Gasto:", font=ctk.CTkFont(size=13)).pack(pady=(20, 5))
         entry_desc = ctk.CTkEntry(modal, width=250, placeholder_text="Ej: Combustible, Papelería...")
         entry_desc.pack(pady=5)
         
         ctk.CTkLabel(modal, text="Monto ($):", font=ctk.CTkFont(size=13)).pack(pady=(10, 5))
-        entry_monto = ctk.CTkEntry(modal, width=250, placeholder_text="0")
+        entry_monto = ctk.CTkEntry(
+            modal, width=250, placeholder_text="0",
+            validate="key", validatecommand=vcmd
+        )
         entry_monto.pack(pady=5)
 
         def guardar():
