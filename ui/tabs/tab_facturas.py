@@ -6,6 +6,8 @@ from database.exportador import exportar_liquidaciones
 from CTkMessagebox import CTkMessagebox
 from tkcalendar import DateEntry
 import tkinter as tk
+from tkinter import filedialog
+from datetime import datetime
 
 
 class TabFacturas(ctk.CTkFrame):
@@ -375,13 +377,40 @@ class TabFacturas(ctk.CTkFrame):
                           icon="info", option_1="OK")
             return
 
+        # Preguntar ubicación al usuario
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ruta_sugerida = f"Liquidaciones_{timestamp}.xlsx"
+        
+        ruta_destino = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Archivos de Excel", "*.xlsx")],
+            initialfile=ruta_sugerida,
+            title="Seleccionar dónde guardar el reporte"
+        )
+        
+        if not ruta_destino:
+            return
+
         try:
-            ruta = exportar_liquidaciones(datos)
-            CTkMessagebox(
+            ruta = exportar_liquidaciones(datos, ruta_destino=ruta_destino)
+            # Preguntar si desea abrir la ubicación o ver el archivo
+            msg = CTkMessagebox(
                 title="✅ Exportación Exitosa",
-                message=f"Archivo generado en:\n{ruta}",
-                icon="check", option_1="Abrir carpeta", option_2="OK"
+                message=f"Archivo generado correctamente.",
+                icon="check", option_1="Abrir archivo", option_2="OK"
             )
+            
+            if msg.get() == "Abrir archivo":
+                try:
+                    import subprocess, platform
+                    if platform.system() == 'Darwin':       # macOS
+                        subprocess.call(('open', ruta))
+                    elif platform.system() == 'Windows':    # Windows
+                        os.startfile(ruta)
+                    else:                                   # linux
+                        subprocess.call(('xdg-open', ruta))
+                except Exception:
+                    pass
         except Exception as e:
             CTkMessagebox(
                 title="❌ Error",
