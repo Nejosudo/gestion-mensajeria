@@ -43,21 +43,21 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
     alt_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
     # ── Título del reporte ──
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:L1")
     titulo_cell = ws["A1"]
     titulo_cell.value = "REPORTE DE LIQUIDACIONES — MENSAJERÍA"
     titulo_cell.font = Font(name="Calibri", bold=True, size=14, color="1a1a2e")
     titulo_cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
 
-    ws.merge_cells("A2:G2")
+    ws.merge_cells("A2:L2")
     fecha_cell = ws["A2"]
     fecha_cell.value = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
     fecha_cell.font = Font(name="Calibri", italic=True, size=9, color="666666")
     fecha_cell.alignment = Alignment(horizontal="center")
 
     # ── Encabezados ──
-    headers = ["ID", "Mensajero", "Fecha", "Subtotal Servicios",
+    headers = ["ID", "Mensajero", "Teléfono", "Fecha", "N° Servicios", "Subtotal Servicios",
                "Comisión (20%)", "Aseo", "Base Prestada", "Neto Mensajero", "Ganancia Empresa", "Domicilios"]
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col_num, value=header)
@@ -78,7 +78,9 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         valores = [
             liq.get("id", ""),
             liq.get("mensajero_nombre", ""),
+            liq.get("mensajero_telefono", ""),
             liq.get("fecha", ""),
+            liq.get("num_servicios", 0),
             formatear_moneda(liq.get("subtotal_servicios", 0)),
             formatear_moneda(comision),
             formatear_moneda(aseo),
@@ -89,16 +91,16 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         ]
         for col_num, valor in enumerate(valores, 1):
             cell = ws.cell(row=row_num, column=col_num, value=valor)
-            cell.font = money_font if 4 <= col_num <= 9 else cell_font
+            cell.font = money_font if 6 <= col_num <= 11 else cell_font
             cell.border = border
-            cell.alignment = Alignment(horizontal="center" if col_num <= 3 else "right")
+            cell.alignment = Alignment(horizontal="center" if col_num <= 5 else "right")
             if (row_num - 5) % 2 == 1:
                 cell.fill = alt_fill
 
     # ── Totales ──
     if datos:
         fila_total = len(datos) + 5
-        ws.cell(row=fila_total, column=3, value="TOTALES:").font = Font(bold=True, size=11)
+        ws.cell(row=fila_total, column=4, value="TOTALES:").font = Font(bold=True, size=11)
         total_subtotal = sum(d.get("subtotal_servicios", 0) for d in datos)
         total_comision = sum(d.get("comision_empresa", 0) for d in datos)
         total_aseo = sum(d.get("descuento_aseo", 0) for d in datos)
@@ -106,15 +108,15 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         total_neto = sum(d.get("neto_mensajero", 0) for d in datos)
         total_ganancia_empresa = sum(d.get("comision_empresa", 0) + d.get("descuento_aseo", 0) for d in datos)
 
-        ws.cell(row=fila_total, column=4, value=formatear_moneda(total_subtotal)).font = Font(bold=True, color="2ecc71")
-        ws.cell(row=fila_total, column=5, value=formatear_moneda(total_comision)).font = Font(bold=True, color="e74c3c")
-        ws.cell(row=fila_total, column=6, value=formatear_moneda(total_aseo)).font = Font(bold=True, color="e67e22")
-        ws.cell(row=fila_total, column=7, value=formatear_moneda(total_base)).font = Font(bold=True, color="e67e22")
-        ws.cell(row=fila_total, column=8, value=formatear_moneda(total_neto)).font = Font(bold=True, color="2ecc71")
-        ws.cell(row=fila_total, column=9, value=formatear_moneda(total_ganancia_empresa)).font = Font(bold=True, color="1a1a2e", size=12)
+        ws.cell(row=fila_total, column=6, value=formatear_moneda(total_subtotal)).font = Font(bold=True, color="2ecc71")
+        ws.cell(row=fila_total, column=7, value=formatear_moneda(total_comision)).font = Font(bold=True, color="e74c3c")
+        ws.cell(row=fila_total, column=8, value=formatear_moneda(total_aseo)).font = Font(bold=True, color="e67e22")
+        ws.cell(row=fila_total, column=9, value=formatear_moneda(total_base)).font = Font(bold=True, color="e67e22")
+        ws.cell(row=fila_total, column=10, value=formatear_moneda(total_neto)).font = Font(bold=True, color="2ecc71")
+        ws.cell(row=fila_total, column=11, value=formatear_moneda(total_ganancia_empresa)).font = Font(bold=True, color="1a1a2e", size=12)
 
     # ── Ajustar ancho de columnas ──
-    anchos = [8, 22, 22, 22, 18, 12, 15, 18, 20, 40]
+    anchos = [8, 22, 15, 22, 15, 22, 18, 12, 15, 18, 20, 40]
     for i, ancho in enumerate(anchos, 1):
         ws.column_dimensions[get_column_letter(i)].width = ancho
 
