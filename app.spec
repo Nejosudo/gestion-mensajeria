@@ -21,10 +21,10 @@ datas = [
 
 a = Analysis(
     ['app.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=datas,
-    hiddenimports=['customtkinter', 'CTkMessagebox', 'database', 'openpyxl'],
+    hiddenimports=['customtkinter', 'CTkMessagebox', 'database', 'openpyxl', 'tkcalendar', 'babel.numbers'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
