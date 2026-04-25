@@ -8,6 +8,7 @@ from ui.tabs.tab_gestion import TabGestion
 from ui.tabs.tab_facturas import TabFacturas
 from ui.tabs.tab_finanzas import TabFinanzas
 from ui.tabs.tab_clientes import TabClientes
+from ui.tabs.tab_turnero import TabTurnero, VentanaTurnero
 
 # ── Configuración global ──
 ctk.set_appearance_mode("light")
@@ -123,6 +124,15 @@ class App(ctk.CTk):
             text_color=COLORS["text"]
         )
         self.lbl_fecha.pack(side="right", padx=20)
+
+        self.btn_ver_turnero = ctk.CTkButton(
+            header, text="🔄 Ver Turnero", width=120, height=32,
+            fg_color="#27ae60", hover_color="#2ecc71",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._toggle_turnero
+        )
+        self.btn_ver_turnero.pack(side="right", padx=10)
+
         self._update_clock()
 
         # ── Tabview ──
@@ -150,6 +160,8 @@ class App(ctk.CTk):
         self.tab_clientes = TabClientes(tab2)
         self.tab_facturas = TabFacturas(tab3)
         self.tab_finanzas = TabFinanzas(tab4)
+        
+        self.v_turnero = None # Para controlar una sola instancia de la ventana
 
         # Forzar color negro en el texto de las pestañas
         try:
@@ -174,6 +186,14 @@ class App(ctk.CTk):
             self.tab_clientes.reload_data()
         elif "Facturas" in tab and hasattr(self, 'tab_facturas'):
             self.tab_facturas.reload_data()
+
+    def _toggle_turnero(self):
+        """Abre el turnero en una ventana independiente."""
+        if self.v_turnero is None or not self.v_turnero.winfo_exists():
+            self.v_turnero = VentanaTurnero(self)
+        else:
+            self.v_turnero.focus()
+            self.v_turnero.tab_turnero.reload_data()
 
     def refresh_facturas(self):
         """Llamado desde tab_gestion cuando se ejecuta una liquidación."""

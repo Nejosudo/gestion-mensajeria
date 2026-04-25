@@ -94,6 +94,15 @@ def init_db():
         );
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Turnero (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            mensajero_id INTEGER UNIQUE NOT NULL,
+            fecha_entrada TEXT NOT NULL,
+            FOREIGN KEY (mensajero_id) REFERENCES Mensajeros(id) ON DELETE CASCADE
+        );
+    """)
+
     # --- Migración: Clientes columns ---
     try:
         cursor.execute("PRAGMA table_info(Clientes);")
@@ -601,3 +610,74 @@ def sugerir_clientes(busqueda: str) -> list[str]:
     ).fetchall()
     conn.close()
     return [r["nombre"] for r in rows]
+
+
+# ── Turnero ─────────────────────────────────────────────────────────
+
+def registrar_en_turno(mensajero_id: int):
+    """Agrega un mensajero al final de la cola del turnero."""
+    conn = get_connection()
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn.execute(
+            "INSERT INTO Turnero (mensajero_id, fecha_entrada) VALUES (?, ?)",
+            (mensajero_id, fecha)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Ya está en turno, actualizar fecha para mover al final si se desea, 
+        # o simplemente ignorar. Aquí lo ignoramos porque el usuario dice "se van registrando".
+        pass
+    conn.close()
+
+def obtener_cola_turnos() -> list[dict]:
+    """Obtiene la lista de mensajeros en el turnero ordenados por llegada."""
+    conn = get_connection()
+    query = """
+        SELECT T.*, M.nombre, M.telefono
+        FROM Turnero T
+        JOIN Mensajeros M ON T.mensajero_id = M.id
+        ORDER BY T.fecha_entrada ASC
+    """
+    rows = conn.execute(query).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def quitar_de_turno(mensajero_id: int):
+    """Elimina un mensajero de la cola."""
+    conn = get_connection()
+    conn.execute("DELETE FROM Turnero WHERE mensajero_id = ?", (mensajero_id,))
+    conn.commit()
+    conn.close()
+
+def avanzar_turno(mensajero_id: int):
+    """Mueve al mensajero al final de la cola (actualiza su fecha de entrada)."""
+    conn = get_connection()
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "UPDATE Turnero SET fecha_entrada = ? WHERE mensajero_id = ?",
+        (fecha, mensajero_id)
+    )
+    conn.commit()
+    conn.close()
+
+def obtener_siguiente_en_turno() -> dict | None:
+    """Retorna el primer mensajero en la cola."""
+    conn = get_connection()
+    query = """
+        SELECT T.*, M.nombre, M.telefono
+        FROM Turnero T
+        JOIN Mensajeros M ON T.mensajero_id = M.id
+        ORDER BY T.fecha_entrada ASC
+        LIMIT 1
+    """
+    row = conn.execute(query).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def limpiar_turnero():
+    """Vacía toda la cola."""
+    conn = get_connection()
+    conn.execute("DELETE FROM Turnero")
+    conn.commit()
+    conn.close()

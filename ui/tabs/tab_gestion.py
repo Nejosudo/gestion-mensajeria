@@ -203,6 +203,15 @@ class TabGestion(ctk.CTkFrame):
             command=self._asignar_servicio
         ).pack(side="right", padx=10)
 
+        self.btn_sig_turno = ctk.CTkButton(
+            barra_acciones, text="👤 Sig. Turno", width=120, height=32,
+            fg_color="#16a085", hover_color="#1abc9c",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#ffffff",
+            command=self._seleccionar_siguiente_en_turno
+        )
+        self.btn_sig_turno.pack(side="right", padx=5)
+
         # Tabla de servicios del día
         tabla_header = ctk.CTkFrame(panel_der, fg_color="transparent")
         tabla_header.pack(fill="x", padx=15, pady=(5, 0))
@@ -485,6 +494,19 @@ class TabGestion(ctk.CTkFrame):
             return
 
         db.crear_servicio(self.mensajero_seleccionado["id"], valor, "")
+        
+        # Lógica del Turnero: Si el mensajero era el primero en la cola, moverlo al final
+        siguiente = db.obtener_siguiente_en_turno()
+        if siguiente and siguiente["mensajero_id"] == self.mensajero_seleccionado["id"]:
+            db.avanzar_turno(self.mensajero_seleccionado["id"])
+            
+            # Actualizar la ventana de turnero si está abierta
+            if hasattr(self.app, 'v_turnero') and self.app.v_turnero and self.app.v_turnero.winfo_exists():
+                self.app.v_turnero.tab_turnero.reload_data()
+
+            # Auto-seleccionar al siguiente en turno para el próximo servicio
+            self.after(500, self._seleccionar_siguiente_en_turno)
+
         self.entry_valor.delete(0, "end")
         self.entry_valor.insert(0, "5000")
         self._cargar_servicios_pendientes()
@@ -767,3 +789,10 @@ class TabGestion(ctk.CTkFrame):
                 message=f"No se pudo generar el respaldo:\n{e}",
                 icon="cancel", option_1="OK"
             )
+
+    def _seleccionar_siguiente_en_turno(self):
+        siguiente = db.obtener_siguiente_en_turno()
+        if siguiente:
+            self._seleccionar_mensajero(siguiente["mensajero_id"], siguiente["nombre"], siguiente["telefono"])
+        else:
+            CTkMessagebox(title="Turnero Vacío", message="No hay mensajeros registrados en la cola de turnos.", icon="info")
