@@ -29,10 +29,24 @@ class TabTurnero(ctk.CTkFrame):
             panel_izq, text="👤 Mensajeros en Base",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=COLORS["accent"]
-        ).pack(pady=15)
+        ).pack(pady=(15, 10))
+
+        # Buscador
+        search_frame = ctk.CTkFrame(panel_izq, fg_color=COLORS["bg_input"], corner_radius=8, height=35)
+        search_frame.pack(fill="x", padx=15, pady=(0, 10))
+        search_frame.pack_propagate(False)
+
+        ctk.CTkLabel(search_frame, text="🔍", font=ctk.CTkFont(size=14)).pack(side="left", padx=8)
+        
+        self.entry_buscar = ctk.CTkEntry(
+            search_frame, placeholder_text="Buscar mensajero...",
+            fg_color="transparent", border_width=0, text_color=COLORS["text"]
+        )
+        self.entry_buscar.pack(side="left", fill="both", expand=True)
+        self.entry_buscar.bind("<KeyRelease>", lambda e: self.reload_data())
 
         self.scroll_disponibles = ctk.CTkScrollableFrame(panel_izq, fg_color="transparent")
-        self.scroll_disponibles.pack(fill="both", expand=True, padx=10, pady=10)
+        self.scroll_disponibles.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         # --- Panel Derecho: Cola de Turnos ---
         panel_der = ctk.CTkFrame(contenedor, fg_color=COLORS["bg_card"], corner_radius=12)
@@ -65,26 +79,56 @@ class TabTurnero(ctk.CTkFrame):
         for widget in self.scroll_disponibles.winfo_children():
             widget.destroy()
 
-        mensajeros = db.obtener_mensajeros()
+        busqueda = self.entry_buscar.get().strip()
+        mensajeros = db.obtener_mensajeros(busqueda)
         cola_actual = [t["mensajero_id"] for t in db.obtener_cola_turnos()]
+
+        if not mensajeros:
+            ctk.CTkLabel(
+                self.scroll_disponibles, text="No se encontraron coincidencias",
+                font=ctk.CTkFont(size=11, slant="italic"),
+                text_color=COLORS["text_muted"]
+            ).pack(pady=20)
+            return
 
         for m in mensajeros:
             if m["id"] in cola_actual:
                 continue
 
-            card = ctk.CTkFrame(self.scroll_disponibles, fg_color=COLORS["bg_input"], corner_radius=8, height=60)
+            # Card design similar to TabGestion
+            card = ctk.CTkFrame(
+                self.scroll_disponibles, 
+                fg_color=COLORS["bg_input"], 
+                corner_radius=10, 
+                height=70
+            )
             card.pack(fill="x", pady=4, padx=5)
             card.pack_propagate(False)
 
-            ctk.CTkLabel(
-                card, text=m["nombre"],
-                font=ctk.CTkFont(size=14, weight="bold"),
-                text_color=COLORS["text"]
-            ).pack(side="left", padx=15)
+            # Contenedor Texto
+            txt_frame = ctk.CTkFrame(card, fg_color=COLORS["bg_input"])
+            txt_frame.pack(side="left", fill="both", expand=True, padx=(12, 5), pady=8)
 
+            ctk.CTkLabel(
+                txt_frame, text=f"👤 {m['nombre']}",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                text_color=COLORS["text"],
+                anchor="w"
+            ).pack(fill="x", side="top")
+
+            ctk.CTkLabel(
+                txt_frame, text=f"📞 {m['telefono']}",
+                font=ctk.CTkFont(size=11),
+                text_color=COLORS["text_muted"],
+                anchor="w"
+            ).pack(fill="x", side="top")
+
+            # Botón "+" verde a la derecha
             ctk.CTkButton(
-                card, text="Llegó 📥", width=80, height=28,
-                fg_color=COLORS["accent"], text_color="#ffffff",
+                card, text="➕", width=40, height=35,
+                fg_color=COLORS["success"], hover_color="#219150",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color="#ffffff",
                 command=lambda mid=m["id"]: self._registrar_llegada(mid)
             ).pack(side="right", padx=10)
 
@@ -104,17 +148,17 @@ class TabTurnero(ctk.CTkFrame):
         for i, t in enumerate(cola):
             is_first = (i == 0)
             bg_color = "#2c3e50" if is_first else COLORS["bg_input"]
-            border_w = 2 if is_first else 0
-            border_c = "#27ae60" if is_first else bg_color
+            card_kwargs = {
+                "master": self.scroll_cola,
+                "fg_color": bg_color,
+                "corner_radius": 10,
+                "height": 70
+            }
+            if is_first:
+                card_kwargs["border_width"] = 2
+                card_kwargs["border_color"] = "#27ae60"
 
-            card = ctk.CTkFrame(
-                self.scroll_cola, 
-                fg_color=bg_color, 
-                border_width=border_w, 
-                border_color=border_c,
-                corner_radius=10, 
-                height=70
-            )
+            card = ctk.CTkFrame(**card_kwargs)
             card.pack(fill="x", pady=5, padx=5)
             card.pack_propagate(False)
 
@@ -155,12 +199,6 @@ class TabTurnero(ctk.CTkFrame):
                 command=lambda mid=t["mensajero_id"]: self._quitar_turno(mid)
             ).pack(side="right", padx=2)
 
-            if not is_first:
-                ctk.CTkButton(
-                    btns_frame, text="🔝", width=30, height=28,
-                    fg_color="#3498db",
-                    command=lambda mid=t["mensajero_id"]: self._subir_turno(mid)
-                ).pack(side="right", padx=2)
 
     def _registrar_llegada(self, mid):
         db.registrar_en_turno(mid)
@@ -170,12 +208,6 @@ class TabTurnero(ctk.CTkFrame):
         db.quitar_de_turno(mid)
         self.reload_data()
 
-    def _subir_turno(self, mid):
-        # Para subir el turno, tendríamos que manipular las fechas. 
-        # Pero el usuario pidió FIFO. Dejemos quitar por ahora.
-        # Si queremos subirlo, podemos borrarlo y re-insertarlo con una fecha antigua?
-        # Mejor solo quitar y dejar que se registren en orden.
-        pass
 
     def _limpiar_turnero(self):
         msg = CTkMessagebox(

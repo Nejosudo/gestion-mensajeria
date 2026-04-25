@@ -2,7 +2,7 @@ import customtkinter as ctk
 import tkinter.ttk as ttk
 from datetime import datetime
 from CTkMessagebox import CTkMessagebox
-from core.config import COLORS, fmt_moneda
+from core.config import COLORS, fmt_moneda, CTkToolTip
 from database import database as db
 from ui.modals import FormularioMensajero, VentanaResumen, DialogoExito
 from database.exportador import exportar_servicios_pendientes
@@ -144,8 +144,8 @@ class TabGestion(ctk.CTkFrame):
         )
         self.lbl_mensajero_sel.pack(side="left")
 
-        # ── Barra de Acciones (Servicio + Base) ──
-        barra_acciones = ctk.CTkFrame(panel_der, fg_color=COLORS["bg_input"], corner_radius=10, height=52)
+        # ── Barra de Acciones (Servicio + Cliente + Descripción + Base) ──
+        barra_acciones = ctk.CTkFrame(panel_der, fg_color=COLORS["bg_input"], corner_radius=10, height=60)
         barra_acciones.pack(fill="x", padx=15, pady=(0, 8))
         barra_acciones.pack_propagate(False) 
 
@@ -153,37 +153,51 @@ class TabGestion(ctk.CTkFrame):
         section_svc = ctk.CTkFrame(barra_acciones, fg_color="transparent")
         section_svc.pack(side="left", fill="y", padx=(10, 0))
 
-        ctk.CTkLabel(
-            section_svc, text="💰 Servicio:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=COLORS["accent"]
-        ).pack(side="left", padx=5)
-
+        ctk.CTkLabel(section_svc, text="💰", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
         self.entry_valor = ctk.CTkEntry(
-            section_svc, width=80, placeholder_text="5000",
+            section_svc, width=70, placeholder_text="5000",
             fg_color=COLORS["bg_card"], border_color=COLORS["border"],
             text_color=COLORS["text"], corner_radius=6, height=28,
             justify="center"
         )
         self.entry_valor.pack(side="left", padx=2)
         self.entry_valor.insert(0, "5000")
-        self.entry_valor.bind("<Return>", lambda e: self._asignar_servicio())
+
+        # Sección Cliente (Searchable)
+        section_cli = ctk.CTkFrame(barra_acciones, fg_color="transparent")
+        section_cli.pack(side="left", fill="y", padx=5)
+        
+        ctk.CTkLabel(section_cli, text="👤", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
+        self.entry_cliente = ctk.CTkEntry(
+            section_cli, width=140, placeholder_text="Cliente (opcional)...",
+            fg_color=COLORS["bg_card"], border_color=COLORS["border"],
+            text_color=COLORS["text"], corner_radius=6, height=28
+        )
+        self.entry_cliente.pack(side="left", padx=2)
+        self.entry_cliente.bind("<KeyRelease>", self._on_cliente_key_release)
+
+        # Sección Descripción (Nota opcional)
+        section_desc = ctk.CTkFrame(barra_acciones, fg_color="transparent")
+        section_desc.pack(side="left", fill="y", padx=5)
+        
+        ctk.CTkLabel(section_desc, text="📝", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
+        self.entry_desc_svc = ctk.CTkEntry(
+            section_desc, width=150, placeholder_text="Nota opcional...",
+            fg_color=COLORS["bg_card"], border_color=COLORS["border"],
+            text_color=COLORS["text"], corner_radius=6, height=28
+        )
+        self.entry_desc_svc.pack(side="left", padx=2)
 
         # Separador visual
-        ctk.CTkFrame(barra_acciones, width=1, fg_color=COLORS["border"]).pack(side="left", fill="y", padx=15, pady=10)
+        ctk.CTkFrame(barra_acciones, width=1, fg_color=COLORS["border"]).pack(side="left", fill="y", padx=10, pady=12)
 
         # Sección Base
         section_base = ctk.CTkFrame(barra_acciones, fg_color="transparent")
         section_base.pack(side="left", fill="y")
 
-        ctk.CTkLabel(
-            section_base, text="🏦 Base:",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#e67e22"
-        ).pack(side="left", padx=5)
-
+        ctk.CTkLabel(section_base, text="🏦", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
         self.entry_base = ctk.CTkEntry(
-            section_base, width=80, placeholder_text="0",
+            section_base, width=75, placeholder_text="0",
             fg_color=COLORS["bg_card"], border_color=COLORS["border"],
             text_color=COLORS["text"], corner_radius=6, height=28,
             justify="center"
@@ -195,22 +209,16 @@ class TabGestion(ctk.CTkFrame):
         self.entry_base.bind("<FocusIn>", self._on_base_focus_in)
         self.entry_base.bind("<FocusOut>", self._on_base_focus_out)
 
-        ctk.CTkButton(
-            barra_acciones, text="➕ Agregar servicio", width=140, height=32,
+        # Botones de acción a la derecha
+        self.btn_agregar = ctk.CTkButton(
+            barra_acciones, text="Agregar servicio", width=160, height=32,
             fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#ffffff",
             command=self._asignar_servicio
-        ).pack(side="right", padx=10)
-
-        self.btn_sig_turno = ctk.CTkButton(
-            barra_acciones, text="👤 Sig. Turno", width=120, height=32,
-            fg_color="#16a085", hover_color="#1abc9c",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#ffffff",
-            command=self._seleccionar_siguiente_en_turno
         )
-        self.btn_sig_turno.pack(side="right", padx=5)
+        self.btn_agregar.pack(side="right", padx=10)
+        CTkToolTip(self.btn_agregar, "Asignar este servicio al mensajero")
 
         # Tabla de servicios del día
         tabla_header = ctk.CTkFrame(panel_der, fg_color="transparent")
@@ -244,26 +252,28 @@ class TabGestion(ctk.CTkFrame):
         self.tabla_frame = ctk.CTkFrame(panel_der, fg_color=COLORS["bg_input"], corner_radius=10)
         self.tabla_frame.pack(fill="both", expand=True, padx=15, pady=(5, 8))
 
-        # Estilo para Treeview (solo una vez en app_controller, pero aquí aseguramos si es necesario)
+        # Estilo para Treeview
         style = ttk.Style()
         style.theme_use("clam")
         
         self.tree_servicios = ttk.Treeview(
             self.tabla_frame,
-            columns=("id", "valor", "descripcion", "fecha"),
+            columns=("id", "cliente", "valor", "descripcion", "fecha"),
             show="headings",
             style="Dark.Treeview",
             selectmode="extended"
         )
         self.tree_servicios.heading("id", text="ID")
-        self.tree_servicios.heading("valor", text="Valor")
-        self.tree_servicios.heading("descripcion", text="Descripción domicilio")
-        self.tree_servicios.heading("fecha", text="Fecha / Hora")
+        self.tree_servicios.heading("cliente", text="👤 Cliente")
+        self.tree_servicios.heading("valor", text="💰 Valor")
+        self.tree_servicios.heading("descripcion", text="📝 Notas / Descripción")
+        self.tree_servicios.heading("fecha", text="🕒 Fecha / Hora")
 
-        self.tree_servicios.column("id", width=50, anchor="center")
-        self.tree_servicios.column("valor", width=120, anchor="center")
-        self.tree_servicios.column("descripcion", width=220, anchor="w")
-        self.tree_servicios.column("fecha", width=180, anchor="center")
+        self.tree_servicios.column("id", width=40, anchor="center")
+        self.tree_servicios.column("cliente", width=140, anchor="w")
+        self.tree_servicios.column("valor", width=90, anchor="center")
+        self.tree_servicios.column("descripcion", width=180, anchor="w")
+        self.tree_servicios.column("fecha", width=150, anchor="center")
         self.tree_servicios.tag_configure("par", background=COLORS["table_row_2"])
         self.tree_servicios.tag_configure("atrasado", foreground="#e74c3c") # Color rojo para servicios antiguos
 
@@ -277,6 +287,9 @@ class TabGestion(ctk.CTkFrame):
         if self._after_search_id:
             self.after_cancel(self._after_search_id)
         self._after_search_id = self.after(300, self._cargar_mensajeros)
+
+    def _on_cliente_key_release(self, event=None):
+        self._autocomplete_key_release(event, self.entry_cliente)
 
     def _cargar_mensajeros(self):
         for widget in self.lista_mensajeros.winfo_children():
@@ -493,7 +506,10 @@ class TabGestion(ctk.CTkFrame):
                           icon="warning", option_1="OK")
             return
 
-        db.crear_servicio(self.mensajero_seleccionado["id"], valor, "")
+        cliente_nombre = self.entry_cliente.get().strip()
+        descripcion = self.entry_desc_svc.get().strip()
+
+        db.crear_servicio(self.mensajero_seleccionado["id"], valor, descripcion, cliente_nombre=cliente_nombre)
         
         # Lógica del Turnero: Si el mensajero era el primero en la cola, moverlo al final
         siguiente = db.obtener_siguiente_en_turno()
@@ -507,8 +523,12 @@ class TabGestion(ctk.CTkFrame):
             # Auto-seleccionar al siguiente en turno para el próximo servicio
             self.after(500, self._seleccionar_siguiente_en_turno)
 
+        # Limpiar entradas
         self.entry_valor.delete(0, "end")
         self.entry_valor.insert(0, "5000")
+        self.entry_cliente.delete(0, "end")
+        self.entry_desc_svc.delete(0, "end")
+        
         self._cargar_servicios_pendientes()
         self._actualizar_status_visual_mensajero(self.mensajero_seleccionado["id"])
         
@@ -536,8 +556,9 @@ class TabGestion(ctk.CTkFrame):
                 
             self.tree_servicios.insert("", "end", iid=str(s["id"]), values=(
                 s["id"],
+                s.get("cliente_nombre") or "",
                 fmt_moneda(s["valor"]),
-                s.get("descripcion", ""),
+                s.get("descripcion") or "",
                 s["fecha"]
             ), tags=tags)
 
@@ -586,17 +607,22 @@ class TabGestion(ctk.CTkFrame):
         columna = self.tree_servicios.identify_column(event.x)
         item = self.tree_servicios.identify_row(event.y)
         if not item: return
-        if columna not in ("#2", "#3"): return
+        
+        # Columnas editables: Cliente (#2), Valor (#3), Descripción (#4)
+        if columna not in ("#2", "#3", "#4"): return
 
         valores = self.tree_servicios.item(item, "values")
         bbox = self.tree_servicios.bbox(item, columna)
         if not bbox: return
 
         if columna == "#2":
-            valor_actual = valores[1].replace("$", "").replace(".", "")
+            valor_actual = valores[1] # Cliente
+            justify = "left"
+        elif columna == "#3":
+            valor_actual = valores[2].replace("$", "").replace(".", "") # Valor
             justify = "center"
         else:
-            valor_actual = valores[2]
+            valor_actual = valores[3] # Descripción
             justify = "left"
 
         entry = ctk.CTkEntry(
@@ -623,39 +649,47 @@ class TabGestion(ctk.CTkFrame):
         entry.bind("<Escape>", lambda e: self._cerrar_edicion_inline())
         entry.bind("<FocusOut>", lambda e: self._on_inline_focus_out(e))
 
-        if columna == "#3":
+        if columna == "#2":
             entry.bind("<KeyRelease>", lambda e: self._autocomplete_key_release(e, entry))
 
     def _confirmar_edicion_inline(self, event=None):
         if not self._edit_widget: return
 
-        if hasattr(self, '_edit_col') and self._edit_col == "#3":
-            nueva_desc = self._edit_widget.get().strip()
-            db.actualizar_descripcion_servicio(self._edit_id, nueva_desc)
-            self._cerrar_edicion_inline()
-            self._cargar_servicios_pendientes()
-            # Actualizar contador de clientes
-            if hasattr(self.app, 'refresh_clientes'):
-                self.app.refresh_clientes()
-            return
-
+        item = self.tree_servicios.item(self._edit_item)
+        valores = item["values"]
+        
+        id_serv = self._edit_id
+        
+        # Obtener valores actuales del tree para lo que no se está editando
+        # valores index: 0:id, 1:cliente, 2:valor, 3:desc, 4:fecha
+        cliente = valores[1]
         try:
-            nuevo_valor = float(self._edit_widget.get().strip().replace(".", "").replace(",", ""))
-        except ValueError:
-            CTkMessagebox(title="⚠️ Error", message="Valor numérico inválido.",
-                          icon="warning", option_1="OK")
-            self._cerrar_edicion_inline()
-            return
+            valor = float(valores[2].replace("$", "").replace(".", ""))
+        except:
+            valor = 5000
+        descripcion = valores[3]
 
-        if nuevo_valor <= 0:
-            CTkMessagebox(title="⚠️ Error", message="El valor debe ser mayor a 0.",
-                          icon="warning", option_1="OK")
-            self._cerrar_edicion_inline()
-            return
+        nuevo_input = self._edit_widget.get().strip()
 
-        db.actualizar_valor_servicio(self._edit_id, nuevo_valor)
+        if self._edit_col == "#2": # Cliente
+            cliente = nuevo_input
+        elif self._edit_col == "#3": # Valor
+            try:
+                valor = float(nuevo_input.replace(".", "").replace(",", ""))
+            except ValueError:
+                CTkMessagebox(title="⚠️ Error", message="Valor numérico inválido.", icon="warning")
+                self._cerrar_edicion_inline()
+                return
+        elif self._edit_col == "#4": # Descripción
+            descripcion = nuevo_input
+
+        db.actualizar_servicio_completo(id_serv, valor, descripcion, cliente_nombre=cliente)
+        
         self._cerrar_edicion_inline()
         self._cargar_servicios_pendientes()
+        
+        if hasattr(self.app, 'refresh_clientes'):
+            self.app.refresh_clientes()
 
     def _cerrar_edicion_inline(self):
         if self._edit_widget and self._edit_widget.winfo_exists():
@@ -726,25 +760,91 @@ class TabGestion(ctk.CTkFrame):
 
     # ── Autocomplete Logic ─────────────────────────────────────────────
 
-    def _autocomplete_key_release(self, event, entry):
-        # Ignorar teclas que no sean letras, números o espacios (como Backspace, Flechas, etc)
-        if event.keysym in ("BackSpace", "Delete", "Left", "Right", "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Return", "Escape", "Tab"):
+    # ── Autocomplete Logic ─────────────────────────────────────────────
+
+    def _on_cliente_key_release(self, event=None):
+        """Autocompletado de texto (type-ahead) para la barra superior."""
+        if event and event.keysym in ("BackSpace", "Delete", "Left", "Right", "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Return", "Escape", "Tab"):
             return
 
-        texto = entry.get()
+        texto = self.entry_cliente.get()
         if not texto: return
 
-        # Buscar sugerencia (solo que empiecen por el texto ingresado)
         sugerencias = db.sugerir_clientes(texto)
         if sugerencias:
             sugerencia = sugerencias[0]
             if sugerencia.lower().startswith(texto.lower()):
-                # Insertar el resto y seleccionarlo
                 pos = len(texto)
-                entry.delete(0, "end")
-                entry.insert(0, sugerencia)
-                entry.select_range(pos, "end")
-                entry.icursor(pos) 
+                self.entry_cliente.delete(0, "end")
+                self.entry_cliente.insert(0, sugerencia)
+                self.entry_cliente.select_range(pos, "end")
+                self.entry_cliente.icursor(pos)
+
+    def _show_suggestions(self, entry):
+        """Muestra lista desplegable para la edición inline en la tabla."""
+        texto = entry.get().strip()
+        if not texto:
+            self._cerrar_sugerencias()
+            return
+
+        sugerencias = db.sugerir_clientes(texto)
+        if not sugerencias:
+            self._cerrar_sugerencias()
+            return
+
+        if not self._top_sugerencias or not self._top_sugerencias.winfo_exists():
+            self._top_sugerencias = tk.Toplevel(self)
+            self._top_sugerencias.wm_overrideredirect(True)
+            self._top_sugerencias.configure(bg=COLORS["bg_card"])
+            
+            self._lista_sugerencias = tk.Listbox(
+                self._top_sugerencias,
+                bg=COLORS["bg_card"],
+                fg=COLORS["text"],
+                font=("Arial", 11),
+                borderwidth=1,
+                highlightthickness=0,
+                selectbackground=COLORS["accent"],
+                selectforeground="white"
+            )
+            self._lista_sugerencias.pack(fill="both", expand=True)
+            self._lista_sugerencias.bind("<<ListboxSelect>>", lambda e: self._seleccionar_sugerencia(entry))
+            self._top_sugerencias.bind("<FocusOut>", lambda e: self._cerrar_sugerencias())
+
+        self._lista_sugerencias.delete(0, tk.END)
+        for s in sugerencias:
+            self._lista_sugerencias.insert(tk.END, s)
+
+        self.update_idletasks()
+        x = entry.winfo_rootx()
+        y = entry.winfo_rooty() + entry.winfo_height()
+        w = entry.winfo_width()
+        h = min(len(sugerencias) * 25, 150)
+        self._top_sugerencias.wm_geometry(f"{w}x{h}+{x}+{y}")
+        self._top_sugerencias.lift()
+
+    def _seleccionar_sugerencia(self, entry):
+        if not self._lista_sugerencias: return
+        sel = self._lista_sugerencias.curselection()
+        if sel:
+            nombre = self._lista_sugerencias.get(sel[0])
+            if entry.winfo_exists():
+                entry.delete(0, tk.END)
+                entry.insert(0, nombre)
+                entry.focus()
+            self._cerrar_sugerencias()
+
+    def _cerrar_sugerencias(self):
+        if self._top_sugerencias and self._top_sugerencias.winfo_exists():
+            self._top_sugerencias.destroy()
+        self._top_sugerencias = None
+        self._lista_sugerencias = None
+
+    def _autocomplete_key_release(self, event, entry):
+        """Controlador para la edición inline (usa lista desplegable)."""
+        if event.keysym in ("Return", "Escape", "Up", "Down"):
+            return
+        self._show_suggestions(entry)
 
     def _actualizar_status_visual_mensajero(self, id_mensajero: int):
         """Actualiza el color del círculo de estatus sin recargar toda la lista."""
@@ -760,7 +860,8 @@ class TabGestion(ctk.CTkFrame):
         dot.configure(fg_color=color)
 
     def _on_inline_focus_out(self, event):
-        self._cerrar_edicion_inline()
+        # Delay para permitir selección en la lista de sugerencias antes de cerrar el entry
+        self.after(200, self._cerrar_edicion_inline)
 
     def _exportar_respaldo_pendientes(self):
         """Exporta todos los servicios pendientes a Excel como respaldo de seguridad."""

@@ -291,25 +291,39 @@ def actualizar_base_mensajero(id_: int, base: float):
 
 # ── Servicios ────────────────────────────────────────────────────────
 
-def crear_servicio(mensajero_id: int, valor: float = 5000, descripcion: str = "") -> int:
+def crear_servicio(mensajero_id: int, valor: float = 5000, descripcion: str = "", cliente_id: int = None, cliente_nombre: str = None) -> int:
     conn = get_connection()
     cursor = conn.cursor()
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Intentar buscar un cliente con ese nombre para vincularlo
-    cliente_id = None
-    if descripcion:
-        c = cursor.execute("SELECT id FROM Clientes WHERE nombre = ?", (descripcion.strip(),)).fetchone()
+    # Si no se pasó cliente_id pero sí cliente_nombre, intentar buscarlo
+    if cliente_nombre and not cliente_id:
+        c = cursor.execute("SELECT id FROM Clientes WHERE nombre = ?", (cliente_nombre.strip(),)).fetchone()
         if c: cliente_id = c[0]
 
     cursor.execute(
         "INSERT INTO Servicios (mensajero_id, valor, fecha, descripcion, cliente_id, cliente_nombre) VALUES (?, ?, ?, ?, ?, ?)",
-        (mensajero_id, valor, fecha, descripcion, cliente_id, descripcion if cliente_id else None)
+        (mensajero_id, valor, fecha, descripcion, cliente_id, cliente_nombre)
     )
     conn.commit()
     nuevo_id = cursor.lastrowid
     conn.close()
     return nuevo_id if nuevo_id is not None else 0
+
+def actualizar_servicio_completo(id_servicio: int, valor: float, descripcion: str, cliente_id: int = None, cliente_nombre: str = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    if cliente_nombre and not cliente_id:
+        c = cursor.execute("SELECT id FROM Clientes WHERE nombre = ?", (cliente_nombre.strip(),)).fetchone()
+        if c: cliente_id = c[0]
+
+    cursor.execute(
+        "UPDATE Servicios SET valor=?, descripcion=?, cliente_id=?, cliente_nombre=? WHERE id=?", 
+        (valor, descripcion, cliente_id, cliente_nombre, id_servicio)
+    )
+    conn.commit()
+    conn.close()
 
 
 def obtener_servicios_pendientes(mensajero_id: int) -> list[dict]:
@@ -342,17 +356,9 @@ def actualizar_valor_servicio(id_servicio: int, nuevo_valor: float):
 
 def actualizar_descripcion_servicio(id_servicio: int, descripcion: str):
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Intentar vincular cliente si el nombre coincide
-    cliente_id = None
-    if descripcion:
-        c = cursor.execute("SELECT id FROM Clientes WHERE nombre = ?", (descripcion.strip(),)).fetchone()
-        if c: cliente_id = c[0]
-
-    cursor.execute(
-        "UPDATE Servicios SET descripcion=?, cliente_id=?, cliente_nombre=? WHERE id=?", 
-        (descripcion, cliente_id, descripcion if cliente_id else None, id_servicio)
+    conn.execute(
+        "UPDATE Servicios SET descripcion=? WHERE id=?", 
+        (descripcion, id_servicio)
     )
     conn.commit()
     conn.close()
