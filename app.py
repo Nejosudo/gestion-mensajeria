@@ -92,12 +92,12 @@ class App(ctk.CTk):
                          fieldbackground=COLORS["table_row_1"],
                          borderwidth=0,
                          rowheight=32,
-                         font=("Segoe UI", 11))
+                         font=("Arial", 11))
         style.configure("Dark.Treeview.Heading",
                          background=COLORS["table_header"],
                          foreground=COLORS["accent"],
                          borderwidth=0,
-                         font=("Segoe UI", 11, "bold"),
+                         font=("Arial", 11, "bold"),
                          relief="flat")
         style.map("Dark.Treeview",
                    background=[("selected", COLORS["highlight"])],
@@ -113,14 +113,14 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             header, text="📦  SISTEMA DE MENSAJERÍA",
-            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+            font=ctk.CTkFont(family=("Arial", "Segoe UI"), size=20, weight="bold"),
             text_color=COLORS["accent"]
         ).pack(side="left", padx=20)
 
         self.lbl_fecha = ctk.CTkLabel(
             header,
             text="",
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            font=ctk.CTkFont(family=("Arial", "Segoe UI"), size=15, weight="bold"),
             text_color=COLORS["text"]
         )
         self.lbl_fecha.pack(side="right", padx=20)
