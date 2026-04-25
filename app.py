@@ -45,7 +45,7 @@ class App(ctk.CTk):
         
         login.lift()
         login.focus_force()
-        login.grab_set()
+        login.after(100, login.grab_set)
 
         ctk.CTkLabel(login, text="Ingrese la contraseña", font=ctk.CTkFont(size=15, weight="bold")).pack(pady=(20, 10))
         entry_pass = ctk.CTkEntry(login, show="*", width=200)

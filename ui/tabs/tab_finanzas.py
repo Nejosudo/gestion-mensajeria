@@ -340,7 +340,7 @@ class TabFinanzas(ctk.CTkFrame):
         modal.deiconify()
         modal.lift()
         modal.focus_force()
-        modal.grab_set()
+        modal.after(100, modal.grab_set)
 
         def solo_numeros(P):
             if P == "": return True
@@ -400,7 +400,7 @@ class TabFinanzas(ctk.CTkFrame):
         modal.geometry("320x180")
         modal.configure(fg_color=COLORS["bg_card"])
         modal.transient(self.winfo_toplevel())
-        modal.grab_set()
+        modal.after(100, modal.grab_set)
 
         ctk.CTkLabel(modal, text=mensaje, font=ctk.CTkFont(size=12)).pack(pady=(20, 10), padx=20)
         entry_pass = ctk.CTkEntry(modal, width=200, show="*")

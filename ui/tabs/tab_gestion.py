@@ -94,7 +94,7 @@ class TabGestion(ctk.CTkFrame):
             y = self.app.winfo_y() + (self.app.winfo_height() // 2) - (150 // 2)
             dialog.geometry(f"320x150+{x}+{y}")
             dialog.lift()
-            dialog.grab_set()
+            dialog.after(100, dialog.grab_set)
 
             ctk.CTkLabel(dialog, text="Ingrese la contraseña", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(18, 8))
             entry = ctk.CTkEntry(dialog, show="*", width=180)

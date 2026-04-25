@@ -240,7 +240,7 @@ class TabFacturas(ctk.CTkFrame):
         y = root.winfo_y() + (root.winfo_height() // 2) - (alto // 2)
         ventana.geometry(f"{ancho}x{alto}+{x}+{y}")
         ventana.lift()
-        ventana.grab_set()
+        ventana.after(100, ventana.grab_set)
 
         # Header estilo premium centrado
         header = ctk.CTkFrame(ventana, fg_color=COLORS["accent"], height=60, corner_radius=0)
@@ -638,7 +638,7 @@ class TabFacturas(ctk.CTkFrame):
         x = root.winfo_x() + (root.winfo_width() // 2) - 160
         y = root.winfo_y() + (root.winfo_height() // 2) - 90
         modal.geometry(f"+{x}+{y}")
-        modal.grab_set()
+        modal.after(100, modal.grab_set)
 
         ctk.CTkLabel(modal, text=mensaje, font=ctk.CTkFont(size=12),
                      wraplength=280).pack(pady=(20, 8), padx=20)

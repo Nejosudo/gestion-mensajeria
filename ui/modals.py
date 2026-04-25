@@ -32,7 +32,7 @@ class VentanaResumen(ctk.CTkToplevel):
         self.deiconify() # Mostrar ya centrado
         self.lift()
         self.focus()
-        self.grab_set()
+        self.after(100, self.grab_set)
 
         self.on_confirm = on_confirm
 
@@ -178,7 +178,7 @@ class DialogoExito(ctk.CTkToplevel):
         self.deiconify()
         self.lift()
         self.focus()
-        self.grab_set()
+        self.after(100, self.grab_set)
 
         # Ícono y mensaje
         ctk.CTkLabel(
@@ -233,7 +233,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.deiconify()
         self.lift()
         self.focus()
-        self.grab_set()
+        self.after(100, self.grab_set)
 
         # UI
         ctk.CTkLabel(

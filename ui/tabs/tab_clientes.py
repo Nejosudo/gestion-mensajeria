@@ -264,26 +264,22 @@ class TabClientes(ctk.CTkFrame):
             self._update_panel_derecho()
             return
             
-        filtro = self.filtro_var.get()
-        if filtro == "fecha":
-            f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
-            f_fin = self.cal_hasta.get_date().strftime("%Y-%m-%d")
-            filtro = f"{f_inicio}..{f_fin}"
+        # Optimización: Crear un mapa de servicios actual en el tree para evitar bucles anidados O(N*M)
+        mapa_servicios = {}
+        for item in self.tree.get_children():
+            vals = self.tree.item(item, "values")
+            if vals:
+                mapa_servicios[str(vals[0])] = int(vals[4])
             
         for cid in list(self.seleccionados.keys()):
-            # Buscamos en los items actuales del tree
-            found = False
-            for item in self.tree.get_children():
-                vals = self.tree.item(item, "values")
-                if str(vals[0]) == str(cid):
-                    serv_nuevos = int(vals[4])
-                    self.seleccionados[cid]["servicios"] = serv_nuevos
-                    # Actualizar widget si existe
-                    if cid in self._selected_cards:
-                        _, lbl_serv = self._selected_cards[cid]
-                        lbl_serv.configure(text=str(serv_nuevos))
-                    found = True
-                    break
+            scid = str(cid)
+            if scid in mapa_servicios:
+                serv_nuevos = mapa_servicios[scid]
+                self.seleccionados[cid]["servicios"] = serv_nuevos
+                # Actualizar widget si ya existe en el panel derecho
+                if cid in self._selected_cards:
+                    _, lbl_serv = self._selected_cards[cid]
+                    lbl_serv.configure(text=str(serv_nuevos))
         
         self._update_panel_derecho()
 
