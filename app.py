@@ -202,6 +202,11 @@ class App(ctk.CTk):
         if hasattr(self, 'tab_finanzas'):
             self.tab_finanzas.reload_data()
 
+    def refresh_gestion(self):
+        """Refresca la pestaña de gestión (útil cuando cambia el turnero)."""
+        if hasattr(self, 'tab_gestion'):
+            self.tab_gestion._cargar_mensajeros()
+
     def refresh_clientes(self):
         """Llamado desde tab_gestion cuando se asigna un cliente."""
         if hasattr(self, 'tab_clientes'):

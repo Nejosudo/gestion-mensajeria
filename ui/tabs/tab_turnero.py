@@ -203,10 +203,14 @@ class TabTurnero(ctk.CTkFrame):
     def _registrar_llegada(self, mid):
         db.registrar_en_turno(mid)
         self.reload_data()
+        if hasattr(self.app, 'refresh_gestion'):
+            self.app.refresh_gestion()
 
     def _quitar_turno(self, mid):
         db.quitar_de_turno(mid)
         self.reload_data()
+        if hasattr(self.app, 'refresh_gestion'):
+            self.app.refresh_gestion()
 
 
     def _limpiar_turnero(self):
@@ -218,6 +222,8 @@ class TabTurnero(ctk.CTkFrame):
         if msg.get() == "Sí":
             db.limpiar_turnero()
             self.reload_data()
+            if hasattr(self.app, 'refresh_gestion'):
+                self.app.refresh_gestion()
 
 class VentanaTurnero(ctk.CTkToplevel):
     def __init__(self, parent):

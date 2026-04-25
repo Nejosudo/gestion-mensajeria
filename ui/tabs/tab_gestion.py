@@ -297,9 +297,25 @@ class TabGestion(ctk.CTkFrame):
         self._messenger_cards = {}
 
         busqueda = self.entry_buscar.get().strip()
-        mensajeros = db.obtener_mensajeros(busqueda)
+        
+        # Obtener cola del turnero para el ordenamiento
+        cola = db.obtener_cola_turnos()
+        ids_en_cola = [t["mensajero_id"] for t in cola]
+        pos_cola = {id_m: i for i, id_m in enumerate(ids_en_cola)}
 
-        if not mensajeros:
+        # Obtener todos los mensajeros que coinciden con la búsqueda
+        mensajeros_all = db.obtener_mensajeros(busqueda)
+        
+        # Separar y ordenar
+        en_cola = [m for m in mensajeros_all if m["id"] in pos_cola]
+        en_cola.sort(key=lambda x: pos_cola[x["id"]]) # Respetar orden del turnero
+        
+        fuera_cola = [m for m in mensajeros_all if m["id"] not in pos_cola]
+        # fuera_cola ya viene ordenado por nombre desde la DB
+        
+        lista_final = en_cola + fuera_cola
+
+        if not lista_final:
             ctk.CTkLabel(
                 self.lista_mensajeros, text="No se encontraron coincidencias",
                 font=ctk.CTkFont(size=11, slant="italic"),
@@ -307,7 +323,7 @@ class TabGestion(ctk.CTkFrame):
             ).pack(pady=20)
             return
 
-        for m in mensajeros:
+        for m in lista_final:
             is_sel = self.mensajero_seleccionado is not None and self.mensajero_seleccionado.get("id") == m["id"]
             tiene_pedidos = (m.get("servicios_pendientes", 0) > 0)
             color_status = COLORS["success"] if tiene_pedidos else COLORS["danger"]
