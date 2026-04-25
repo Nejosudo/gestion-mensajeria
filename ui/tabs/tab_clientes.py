@@ -10,6 +10,7 @@ import tkinter as tk
 class TabClientes(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
+        self.seleccionados = {} # id: {nombre, servicios}
         self._build_ui()
         self.reload_data()
         self.pack(fill="both", expand=True)
@@ -118,11 +119,15 @@ class TabClientes(ctk.CTkFrame):
             command=self._abrir_formulario_nuevo
         ).pack(side="right", padx=20, pady=15)
 
-        # Contenedor Tabla
-        self.tabla_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=12)
-        self.tabla_frame.pack(fill="both", expand=True)
+        # Contenedor principal para Tabla y Panel Derecho
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.pack(fill="both", expand=True)
 
-        # Acciones rápidas (Editar/Eliminar)
+        # ── Contenedor Tabla (IZQUIERDA) ──
+        self.tabla_frame = ctk.CTkFrame(self.main_container, fg_color=COLORS["bg_card"], corner_radius=12)
+        self.tabla_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+        # Acciones rápidas (Editar/Eliminar) - Movido a la parte inferior de la tabla
         acciones_frame = ctk.CTkFrame(self.tabla_frame, fg_color="transparent", height=45)
         acciones_frame.pack(fill="x", side="bottom", padx=10, pady=5)
 
@@ -140,11 +145,11 @@ class TabClientes(ctk.CTkFrame):
         )
         self.btn_delete.pack(side="left", padx=5)
 
-        # Label Total Servicios (Bottom Right)
+        # Label Total Servicios General (Filtrados)
         self.lbl_total_general = ctk.CTkLabel(
             acciones_frame, text="Total servicios: 0",
-            font=ctk.CTkFont(family="Arial", size=14),
-            text_color="#000000" # Black light? I'll use black for now.
+            font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
+            text_color=COLORS["accent"]
         )
         self.lbl_total_general.pack(side="right", padx=20)
 
@@ -163,20 +168,58 @@ class TabClientes(ctk.CTkFrame):
         self.tree.heading("servicios", text="Servicios")
         self.tree.heading("ultima_vez", text="Último pedido")
 
-        self.tree.column("id", width=60, anchor="center")
-        self.tree.column("nombre", width=180, anchor="center")
-        self.tree.column("direccion", width=220, anchor="center")
-        self.tree.column("telefono", width=130, anchor="center")
-        self.tree.column("servicios", width=120, anchor="center")
-        self.tree.column("ultima_vez", width=180, anchor="center")
+        self.tree.column("id", width=50, anchor="center")
+        self.tree.column("nombre", width=160, anchor="center")
+        self.tree.column("direccion", width=180, anchor="center")
+        self.tree.column("telefono", width=110, anchor="center")
+        self.tree.column("servicios", width=90, anchor="center")
+        self.tree.column("ultima_vez", width=140, anchor="center")
 
         self.tree.pack(fill="both", expand=True, padx=10, pady=(10, 5))
-        self.tree.bind("<<TreeviewSelect>>", self._on_selection_changed)
+        self.tree.bind("<Double-1>", self._on_double_click)
+        # self.tree.bind("<<TreeviewSelect>>", self._on_selection_changed) # Desactivado
         
         # Scrollbar
         sb = ttk.Scrollbar(self.tabla_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
-        sb.place(relx=1.0, rely=0, relheight=1, anchor='ne', x=-10, y=10) # Adjusted position
+        sb.place(relx=1.0, rely=0, relheight=1, anchor='ne', x=-10, y=10)
+
+        # ── Panel Derecho (SELECCIONADOS) ──
+        self.derecha_panel = ctk.CTkFrame(self.main_container, fg_color=COLORS["bg_card"], width=300, corner_radius=12)
+        self.derecha_panel.pack(side="right", fill="both", expand=False)
+        self.derecha_panel.pack_propagate(False)
+
+        ctk.CTkLabel(
+            self.derecha_panel, text="📋 Clientes Seleccionados",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=COLORS["accent"]
+        ).pack(pady=15, padx=10)
+
+        # Lista de seleccionados (Scrollable)
+        self.scroll_seleccion = ctk.CTkScrollableFrame(
+            self.derecha_panel, fg_color="transparent",
+            label_text="Haga clic en la tabla para añadir",
+            label_font=ctk.CTkFont(size=11, slant="italic"),
+            label_text_color=COLORS["text_muted"]
+        )
+        self.scroll_seleccion.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # Footer del panel derecho
+        self.footer_derecha = ctk.CTkFrame(self.derecha_panel, fg_color="transparent", height=100)
+        self.footer_derecha.pack(fill="x", side="bottom", padx=10, pady=10)
+
+        ctk.CTkLabel(
+            self.footer_derecha, text="TOTAL SELECCIÓN",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=COLORS["text_muted"]
+        ).pack(pady=(5, 0))
+
+        self.lbl_total_seleccion = ctk.CTkLabel(
+            self.footer_derecha, text="0",
+            font=ctk.CTkFont(size=32, weight="bold"),
+            text_color=COLORS["success"]
+        )
+        self.lbl_total_seleccion.pack(pady=(0, 10))
 
     def reload_data(self):
         for item in self.tree.get_children():
@@ -193,20 +236,122 @@ class TabClientes(ctk.CTkFrame):
             
         clientes = db.obtener_clientes(busqueda, filtro=filtro)
         
+        total_gral = 0
         for c in clientes:
             ultima = c.get("ultima_fecha", "Nunca")
             if ultima is None: ultima = "Nunca"
             
+            servicios = c.get("total_servicios", 0)
+            total_gral += servicios
+
             self.tree.insert("", "end", iid=str(c["id"]), values=(
                 c["id"],
                 c["nombre"],
-                c.get("direccion", ""),
-                c.get("telefono", ""),
-                c.get("total_servicios", 0),
+                c["direccion"] or "",
+                c["telefono"] or "",
+                servicios,
                 ultima
             ))
         
-        self._on_selection_changed()
+        self.lbl_total_general.configure(text=f"Total servicios: {total_gral}")
+        # Al recargar, actualizamos los datos de los seleccionados por si cambió el filtro
+        self._actualizar_datos_seleccionados()
+
+    def _actualizar_datos_seleccionados(self):
+        """Actualiza el contador de servicios de los clientes seleccionados basado en el filtro actual."""
+        if not self.seleccionados:
+            self._update_panel_derecho()
+            return
+            
+        filtro = self.filtro_var.get()
+        if filtro == "fecha":
+            f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
+            f_fin = self.cal_hasta.get_date().strftime("%Y-%m-%d")
+            filtro = f"{f_inicio}..{f_fin}"
+            
+        for cid in list(self.seleccionados.keys()):
+            # Buscamos el cliente específico para ver su total con el filtro actual
+            # Podríamos optimizar esto, pero por ahora consultamos
+            c_info = db.obtener_clientes(filtro=filtro) # Esto es pesado.
+            # Mejor: solo buscamos en el Treeview si está presente, o consultamos individualmente.
+            
+            # Buscamos en los items actuales del tree
+            found = False
+            for item in self.tree.get_children():
+                vals = self.tree.item(item, "values")
+                if str(vals[0]) == str(cid):
+                    self.seleccionados[cid]["servicios"] = int(vals[4])
+                    found = True
+                    break
+            
+            if not found:
+                # Si no está en el tree (por búsqueda), igual mantenemos el dato pero podría ser 0 o el anterior.
+                # Para ser exactos, deberíamos consultar la DB para este cliente solo.
+                pass
+        
+        self._update_panel_derecho()
+
+    def _on_double_click(self, event):
+        item = self.tree.identify_row(event.y)
+        if not item: return
+        
+        valores = self.tree.item(item, "values")
+        if not valores: return
+        
+        cid = valores[0]
+        nombre = valores[1]
+        servicios = int(valores[4])
+        
+        if cid in self.seleccionados:
+            del self.seleccionados[cid]
+        else:
+            self.seleccionados[cid] = {"nombre": nombre, "servicios": servicios}
+            
+        self._update_panel_derecho()
+
+    def _quitar_seleccion(self, cid):
+        if cid in self.seleccionados:
+            del self.seleccionados[cid]
+            self._update_panel_derecho()
+
+    def _update_panel_derecho(self):
+        # Limpiar panel derecho
+        for w in self.scroll_seleccion.winfo_children():
+            w.destroy()
+            
+        total_seleccion = 0
+        
+        if not self.seleccionados:
+            self.lbl_total_seleccion.configure(text="0")
+            return
+
+        for cid, info in self.seleccionados.items():
+            total_seleccion += info["servicios"]
+            
+            card = ctk.CTkFrame(self.scroll_seleccion, fg_color=COLORS["bg_input"], corner_radius=6)
+            card.pack(fill="x", pady=2, padx=5)
+            
+            ctk.CTkLabel(
+                card, text=f"👤 {info['nombre']}", 
+                font=ctk.CTkFont(size=12, weight="bold"), 
+                anchor="w", wraplength=160
+            ).pack(side="left", padx=10, pady=5)
+            
+            # Botón para quitar
+            btn_remove = ctk.CTkButton(
+                card, text="✕", width=20, height=20, fg_color="transparent", 
+                hover_color=COLORS["danger"], text_color=COLORS["text_muted"],
+                command=lambda c=cid: self._quitar_seleccion(c)
+            )
+            btn_remove.pack(side="right", padx=5)
+
+            ctk.CTkLabel(
+                card, text=str(info['servicios']), 
+                font=ctk.CTkFont(size=12, weight="bold"), 
+                text_color=COLORS["accent"]
+            ).pack(side="right", padx=5, pady=5)
+            
+        self.lbl_total_seleccion.configure(text=str(total_seleccion))
 
     def _on_filter_changed(self):
         self._actualizar_estado_calendarios()
