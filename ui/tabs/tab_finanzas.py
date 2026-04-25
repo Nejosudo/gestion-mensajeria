@@ -147,18 +147,26 @@ class TabFinanzas(ctk.CTkFrame):
         ctk.CTkLabel(header_ingresos, text="📈 Detalle de Ingresos (Comisiones + Aseo)", 
                     font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["accent"]).pack(side="left", pady=5)
         
+        # Botón Exportar para Ingresos
+        ctk.CTkButton(header_ingresos, text="📥 Exportar Reporte", width=140, height=28,
+                     fg_color=COLORS["success"], hover_color="#219150",
+                     text_color="#ffffff", font=ctk.CTkFont(size=11, weight="bold"),
+                     command=self.reload_data # Actualiza la tabla
+                     ).pack(side="right", padx=(5, 0))
+        
         # Rediseño de la lógica de tablas para usar grid
         self.tree_ingresos_frame = ctk.CTkFrame(f_ingresos, fg_color="transparent")
         self.tree_ingresos_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
-        self.tree_ingresos = self._setup_treeview(self.tree_ingresos_frame, ("id", "fecha", "comision", "aseo", "total"))
+        self.tree_ingresos = self._setup_treeview(self.tree_ingresos_frame, ("id", "mensajero", "fecha", "comision", "aseo", "total"))
         
         self.tree_ingresos.heading("id", text="ID")
+        self.tree_ingresos.heading("mensajero", text="Mensajero")
         self.tree_ingresos.heading("fecha", text="Fecha")
         self.tree_ingresos.heading("comision", text="Comisión")
         self.tree_ingresos.heading("aseo", text="Aseo")
         self.tree_ingresos.heading("total", text="Total")
         
-        for col, width in zip(("id", "fecha", "comision", "aseo", "total"), (40, 140, 90, 80, 100)):
+        for col, width in zip(("id", "mensajero", "fecha", "comision", "aseo", "total"), (40, 130, 130, 90, 80, 100)):
             self.tree_ingresos.column(col, width=width, anchor="center")
 
         # Footer Ingresos
@@ -184,14 +192,19 @@ class TabFinanzas(ctk.CTkFrame):
                     font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["danger"]).pack(side="left", pady=5)
         
         # Invertir orden: Agregar Gasto a la derecha
+        # Estilo sólido para botones de Gastos
         ctk.CTkButton(header_gastos, text="➕ Agregar Gasto", width=120, height=28,
                      fg_color=COLORS["danger"], hover_color="#c0392b",
+                     text_color="#ffffff",
                      font=ctk.CTkFont(size=11, weight="bold"),
+                     corner_radius=10,
                      command=self._abrir_modal_gasto).pack(side="right", padx=(5, 0))
 
         ctk.CTkButton(header_gastos, text="🗑️ Eliminar", width=80, height=28,
-                     fg_color="transparent", border_width=1, border_color=COLORS["danger"],
-                     text_color=COLORS["danger"], font=ctk.CTkFont(size=11, weight="bold"),
+                     fg_color="transparent", border_width=2, border_color=COLORS["danger"],
+                     text_color=COLORS["danger"], hover_color="#fdecea",
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     corner_radius=10,
                      command=self._confirmar_eliminar_gasto).pack(side="right")
 
         self.tree_gastos_frame = ctk.CTkFrame(f_gastos, fg_color="transparent")
@@ -258,8 +271,9 @@ class TabFinanzas(ctk.CTkFrame):
             total_fila = comision + aseo
             total_ingresos += total_fila
             tags = ("par",) if i % 2 == 1 else ()
+            nombre_mensajero = liq.get("mensajero_nombre", "") or ""
             self.tree_ingresos.insert("", "end", values=(
-                liq["id"], liq["fecha"], fmt_moneda(comision), fmt_moneda(aseo), fmt_moneda(total_fila)
+                liq["id"], nombre_mensajero, liq["fecha"], fmt_moneda(comision), fmt_moneda(aseo), fmt_moneda(total_fila)
             ), tags=tags)
         
         # Cargar Gastos
@@ -306,12 +320,26 @@ class TabFinanzas(ctk.CTkFrame):
         modal.configure(fg_color=COLORS["bg_card"])
         modal.transient(self.winfo_toplevel())
 
-        # Centrar y mostrar
-        modal.update()
+        # Centrado manual robusto
+        ancho, alto = 350, 250
+        modal.withdraw()
+        modal.update_idletasks()
+        
         root = self.winfo_toplevel()
-        x = root.winfo_x() + (root.winfo_width() // 2) - (350 // 2)
-        y = root.winfo_y() + (root.winfo_height() // 2) - (250 // 2)
-        modal.geometry(f"+{x}+{y}")
+        if root and root.winfo_exists():
+            p_w, p_h = root.winfo_width(), root.winfo_height()
+            p_x, p_y = root.winfo_x(), root.winfo_y()
+            if p_w <= 1:
+                p_w, p_h = modal.winfo_screenwidth(), modal.winfo_screenheight()
+                p_x, p_y = 0, 0
+                
+            x = p_x + (p_w // 2) - (ancho // 2)
+            y = p_y + (p_h // 2) - (alto // 2)
+            modal.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+        modal.deiconify()
+        modal.lift()
+        modal.focus_force()
         modal.grab_set()
 
         def solo_numeros(P):
@@ -331,7 +359,7 @@ class TabFinanzas(ctk.CTkFrame):
         )
         entry_monto.pack(pady=5)
 
-        def guardar():
+        def guardar(event=None):
             desc = entry_desc.get().strip()
             try:
                 monto_str = entry_monto.get().replace(".", "").replace(",", "").strip()
@@ -346,6 +374,8 @@ class TabFinanzas(ctk.CTkFrame):
             modal.destroy()
             self.reload_data()
 
+        entry_desc.bind("<Return>", guardar)
+        entry_monto.bind("<Return>", guardar)
         ctk.CTkButton(modal, text="💾 Guardar Gasto", fg_color=COLORS["success"], command=guardar).pack(pady=20)
 
     def _confirmar_eliminar_gasto(self):
@@ -370,13 +400,6 @@ class TabFinanzas(ctk.CTkFrame):
         modal.geometry("320x180")
         modal.configure(fg_color=COLORS["bg_card"])
         modal.transient(self.winfo_toplevel())
-
-        # Centrar
-        modal.update()
-        root = self.winfo_toplevel()
-        x = root.winfo_x() + (root.winfo_width() // 2) - (320 // 2)
-        y = root.winfo_y() + (root.winfo_height() // 2) - (180 // 2)
-        modal.geometry(f"+{x}+{y}")
         modal.grab_set()
 
         ctk.CTkLabel(modal, text=mensaje, font=ctk.CTkFont(size=12)).pack(pady=(20, 10), padx=20)

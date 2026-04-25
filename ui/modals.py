@@ -11,17 +11,27 @@ class VentanaResumen(ctk.CTkToplevel):
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
 
-        # Centrar desde el principio
-        ancho = 400
-        alto = 580
-        self.update()
-        if parent.winfo_exists():
-            x = parent.winfo_x() + (parent.winfo_width() // 2) - (ancho // 2)
-            y = parent.winfo_y() + (parent.winfo_height() // 2) - (alto // 2)
-            if self.winfo_exists():
-                self.geometry(f"{ancho}x{alto}+{x}+{y}")
+        # Centrado manual robusto
+        ancho, alto = 400, 580
+        self.withdraw() # Ocultar mientras se posiciona
+        self.update_idletasks()
+        
+        if parent and parent.winfo_exists():
+            p_w, p_h = parent.winfo_width(), parent.winfo_height()
+            p_x, p_y = parent.winfo_x(), parent.winfo_y()
             
+            # Si las dimensiones son inválidas, usar centro de pantalla
+            if p_w <= 1:
+                p_w, p_h = self.winfo_screenwidth(), self.winfo_screenheight()
+                p_x, p_y = 0, 0
+            
+            x = p_x + (p_w // 2) - (ancho // 2)
+            y = p_y + (p_h // 2) - (alto // 2)
+            self.geometry(f"{ancho}x{alto}+{x}+{y}")
+        
+        self.deiconify() # Mostrar ya centrado
         self.lift()
+        self.focus()
         self.grab_set()
 
         self.on_confirm = on_confirm
@@ -37,84 +47,158 @@ class VentanaResumen(ctk.CTkToplevel):
             text_color="#ffffff"
         ).pack(pady=20)
 
-        # Contenedor principal
-        main_frame = ctk.CTkFrame(self, fg_color="transparent")
-        main_frame.pack(fill="both", expand=True, padx=25, pady=15)
+        # Cuerpo
+        cuerpo = ctk.CTkFrame(self, fg_color="transparent")
+        cuerpo.pack(fill="both", expand=True, padx=35, pady=(20, 10))
 
-        # ── Info Mensajero ──
-        ctk.CTkLabel(
-            main_frame, text=f"👤 {datos['nombre']}",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=COLORS["text"]
-        ).pack(anchor="w")
+        # --- Info del Mensajero --- 
+        ctk.CTkLabel(cuerpo, text=f"👤 {datos['mensajero']}", 
+                    font=ctk.CTkFont(size=20, weight="bold"), text_color=COLORS["text"]).pack(anchor="w")
         
-        ctk.CTkLabel(
-            main_frame, text=f"📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
-            font=ctk.CTkFont(size=12),
-            text_color=COLORS["text_muted"]
-        ).pack(anchor="w", pady=(2, 10))
+        fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+        ctk.CTkLabel(cuerpo, text=f"📅 Fecha: {fecha_str}", 
+                    font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(anchor="w", pady=(2, 15))
 
-        # ── Desglose ──
-        card = ctk.CTkFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=12)
-        card.pack(fill="x", pady=10)
+        # --- SECCIÓN SUPERIOR (Gris) ---
+        f_superior = ctk.CTkFrame(cuerpo, fg_color="#f8f9fa", corner_radius=12)
+        f_superior.pack(fill="x", pady=5)
 
-        self._item_resumen(card, "📦 Servicios realizados", f"{datos['num_servicios']}", False)
-        self._item_resumen(card, "💰 Subtotal generado", fmt_moneda(datos['subtotal']), False)
-        self._item_resumen(card, "🏍️ Pago a Mensajero", f"- {fmt_moneda(datos['neto'])}", True)
+        # Servicios realizados
+        f_srv = ctk.CTkFrame(f_superior, fg_color="transparent")
+        f_srv.pack(fill="x", padx=15, pady=(15, 8))
+        ctk.CTkLabel(f_srv, text="📦  Servicios realizados", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(side="left")
+        ctk.CTkLabel(f_srv, text=str(datos['cant_servicios']), font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="right")
+
+        # Subtotal generado
+        f_sub = ctk.CTkFrame(f_superior, fg_color="transparent")
+        f_sub.pack(fill="x", padx=15, pady=8)
+        ctk.CTkLabel(f_sub, text="💰  Subtotal generado", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(side="left")
+        ctk.CTkLabel(f_sub, text=fmt_moneda(datos['subtotal']), font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="right")
+
+        # Pago a Mensajero (Rojo y Negativo)
+        f_pago = ctk.CTkFrame(f_superior, fg_color="transparent")
+        f_pago.pack(fill="x", padx=15, pady=(8, 15))
+        ctk.CTkLabel(f_pago, text="🏍️   Pago a Mensajero", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(side="left")
+        ctk.CTkLabel(f_pago, text=f"- {fmt_moneda(datos['pago_final'])}", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
 
         # Separador
-        ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
+        ctk.CTkFrame(cuerpo, height=1, fg_color=COLORS["border"]).pack(fill="x", pady=20)
 
-        # ── Totales Importantes (Empresa) ──
+        # --- SECCIÓN INFERIOR ---
         # Ganancia Empresa
-        f_empresa = ctk.CTkFrame(main_frame, fg_color="transparent")
-        f_empresa.pack(fill="x")
-        ctk.CTkLabel(f_empresa, text="🏢 GANANCIA EMPRESA:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(f_empresa, text=fmt_moneda(datos['comision']), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+        f_ganancia = ctk.CTkFrame(cuerpo, fg_color="transparent")
+        f_ganancia.pack(fill="x", pady=6)
+        ctk.CTkLabel(f_ganancia, text="🏢  GANANCIA EMPRESA:", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="left")
+        ctk.CTkLabel(f_ganancia, text=fmt_moneda(datos['comision']), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
 
         # Aseo
-        f_aseo = ctk.CTkFrame(main_frame, fg_color="transparent")
-        f_aseo.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(f_aseo, text="🧹 ASEO:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(f_aseo, text=fmt_moneda(datos.get('descuento_aseo', 1000)), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+        f_aseo = ctk.CTkFrame(cuerpo, fg_color="transparent")
+        f_aseo.pack(fill="x", pady=6)
+        ctk.CTkLabel(f_aseo, text="🖌️  ASEO:", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="left")
+        ctk.CTkLabel(f_aseo, text=fmt_moneda(datos['descuento_aseo']), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
 
-        # Base
-        f_base = ctk.CTkFrame(main_frame, fg_color="transparent")
-        f_base.pack(fill="x", pady=(10, 0))
-        ctk.CTkLabel(f_base, text="🏦 BASE A DEVOLVER:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(f_base, text=fmt_moneda(datos['base']), font=ctk.CTkFont(size=18, weight="bold"), text_color="#e67e22").pack(side="right")
+        # Base a Devolver
+        f_base = ctk.CTkFrame(cuerpo, fg_color="transparent")
+        f_base.pack(fill="x", pady=(6, 15))
+        ctk.CTkLabel(f_base, text="🏠  BASE A DEVOLVER:", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="left")
+        ctk.CTkLabel(f_base, text=fmt_moneda(datos['base']), font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["warning"]).pack(side="right")
 
-        # Botones
-        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(fill="x", side="bottom", padx=25, pady=25)
+        # Botones de acción
+        btns = ctk.CTkFrame(self, fg_color="transparent")
+        btns.pack(fill="x", side="bottom", padx=30, pady=25)
 
         ctk.CTkButton(
-            btn_frame, text="Cancelar", height=40,
-            fg_color="transparent", border_width=2, border_color=COLORS["border"],
-            text_color=COLORS["text"], hover_color=COLORS["bg_input"],
+            btns, text="Cancelar", height=42, corner_radius=10,
+            fg_color="transparent", border_width=1, border_color=COLORS["border"],
+            text_color=COLORS["text_muted"], hover_color="#f8f9fa",
             command=self.destroy
         ).pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        ctk.CTkButton(
-            btn_frame, text="Confirmar y Liquidar", height=40,
+        self._btn_confirmar = ctk.CTkButton(
+            btns, text="Confirmar y Liquidar", height=42, corner_radius=10,
             fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
-            text_color="#ffffff", font=ctk.CTkFont(weight="bold"),
+            text_color="#ffffff", font=ctk.CTkFont(size=13, weight="bold"),
             command=self._confirmar
-        ).pack(side="right", fill="x", expand=True)
+        )
+        self._btn_confirmar.pack(side="left", fill="x", expand=True)
 
-    def _item_resumen(self, parent, label, value, is_negative):
-        row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", padx=15, pady=8)
-        
-        color_val = COLORS["danger"] if is_negative else COLORS["text"]
-        
-        ctk.CTkLabel(row, text=label, font=ctk.CTkFont(size=12), text_color=COLORS["text"]).pack(side="left")
-        ctk.CTkLabel(row, text=value, font=ctk.CTkFont(size=12, weight="bold"), text_color=color_val).pack(side="right")
+    def _item_resumen(self, master, label, valor, row, color=None):
+        ctk.CTkLabel(master, text=label, font=ctk.CTkFont(size=13), 
+                    text_color=COLORS["text"]).grid(row=row, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(master, text=valor, font=ctk.CTkFont(size=14, weight="bold"), 
+                    text_color=color if color else COLORS["text"]).grid(row=row, column=1, sticky="e", pady=5)
+        master.grid_columnconfigure(1, weight=1)
 
     def _confirmar(self):
-        if self.winfo_exists():
-            self.on_confirm()
-            self.destroy()
+        if not self.winfo_exists():
+            return
+        # Deshabilitar el botón inmediatamente para evitar doble ejecución por doble clic
+        self._btn_confirmar.configure(state="disabled", text="Procesando...")
+        self.update_idletasks()
+        
+        # Primero guardamos la referencia a la callback
+        callback = self.on_confirm
+        
+        # Destruimos esta ventana para liberar el foco antes de que la siguiente modal (éxito) aparezca
+        self.destroy()
+        
+        # Ejecutamos la acción final
+        callback()
+
+
+class DialogoExito(ctk.CTkToplevel):
+    """Diálogo de éxito centrado manualmente sobre la ventana padre."""
+    def __init__(self, parent, titulo="✅ Éxito", mensaje="Operación completada.", boton="Excelente"):
+        super().__init__(parent)
+        self.title(titulo)
+        self.configure(fg_color=COLORS["bg_card"])
+        self.transient(parent)
+        self.resizable(False, False)
+
+        # Centrado manual robusto
+        ancho, alto = 380, 200
+        self.withdraw()
+        self.update_idletasks()
+        
+        if parent and parent.winfo_exists():
+            p_w, p_h = parent.winfo_width(), parent.winfo_height()
+            p_x, p_y = parent.winfo_x(), parent.winfo_y()
+            if p_w <= 1:
+                p_w, p_h = self.winfo_screenwidth(), self.winfo_screenheight()
+                p_x, p_y = 0, 0
+            
+            x = p_x + (p_w // 2) - (ancho // 2)
+            y = p_y + (p_h // 2) - (alto // 2)
+            self.geometry(f"{ancho}x{alto}+{x}+{y}")
+        else:
+            sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+            x, y = (sw // 2) - (ancho // 2), (sh // 2) - (alto // 2)
+            self.geometry(f"{ancho}x{alto}+{x}+{y}")
+            
+        self.deiconify()
+        self.lift()
+        self.focus()
+        self.grab_set()
+
+        # Ícono y mensaje
+        ctk.CTkLabel(
+            self, text="✅",
+            font=ctk.CTkFont(size=36)
+        ).pack(pady=(20, 5))
+
+        ctk.CTkLabel(
+            self, text=mensaje,
+            font=ctk.CTkFont(size=13),
+            text_color=COLORS["text"],
+            wraplength=320
+        ).pack(pady=(0, 15))
+
+        ctk.CTkButton(
+            self, text=boton, height=38, width=160,
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
+            text_color="#ffffff", font=ctk.CTkFont(weight="bold"),
+            command=self.destroy
+        ).pack(pady=(0, 20))
 
 
 class FormularioMensajero(ctk.CTkToplevel):
@@ -126,18 +210,29 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.mensajero = mensajero
 
         self.title("👤 Datos del Mensajero")
-        self.geometry("400x350")
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
+        self.resizable(False, False)
+
+        # Centrado manual robusto
+        ancho, alto = 400, 350
+        self.withdraw()
+        self.update_idletasks()
         
-        # Centrar ventana
-        self.update()
-        if self.master and self.master.winfo_exists():
-            x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
-            y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (350 // 2)
-            self.geometry(f"+{x}+{y}")
-            
+        if parent and parent.winfo_exists():
+            p_w, p_h = parent.winfo_width(), parent.winfo_height()
+            p_x, p_y = parent.winfo_x(), parent.winfo_y()
+            if p_w <= 1:
+                p_w, p_h = self.winfo_screenwidth(), self.winfo_screenheight()
+                p_x, p_y = 0, 0
+                
+            x = p_x + (p_w // 2) - (ancho // 2)
+            y = p_y + (p_h // 2) - (alto // 2)
+            self.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+        self.deiconify()
         self.lift()
+        self.focus()
         self.grab_set()
 
         # UI
@@ -190,6 +285,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.callback(nombre, telefono, self.mensajero["id"] if self.mensajero else None)
         self.destroy()
 
+
 class FormularioCliente(ctk.CTkToplevel):
     """Ventana modal para Crear y Editar clientes."""
     def __init__(self, parent, callback, cliente=None):
@@ -198,17 +294,29 @@ class FormularioCliente(ctk.CTkToplevel):
         self.cliente = cliente
 
         self.title("👥 Datos del Cliente")
-        self.geometry("400x480")
         self.configure(fg_color=COLORS["bg_card"])
         self.transient(parent)
+        self.resizable(False, False)
         
-        self.update()
-        if self.master and self.master.winfo_exists():
-            x = self.master.winfo_x() + (self.master.winfo_width() // 2) - (400 // 2)
-            y = self.master.winfo_y() + (self.master.winfo_height() // 2) - (480 // 2)
-            self.geometry(f"+{x}+{y}")
+        # Centrado manual robusto
+        ancho, alto = 400, 480
+        self.withdraw()
+        self.update_idletasks()
+        
+        if parent and parent.winfo_exists():
+            p_w, p_h = parent.winfo_width(), parent.winfo_height()
+            p_x, p_y = parent.winfo_x(), parent.winfo_y()
+            if p_w <= 1:
+                p_w, p_h = self.winfo_screenwidth(), self.winfo_screenheight()
+                p_x, p_y = 0, 0
+                
+            x = p_x + (p_w // 2) - (ancho // 2)
+            y = p_y + (p_h // 2) - (alto // 2)
+            self.geometry(f"{ancho}x{alto}+{x}+{y}")
             
+        self.deiconify()
         self.lift()
+        self.focus()
         self.grab_set()
 
         ctk.CTkLabel(self, text="GESTIÓN DE CLIENTE", font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["accent"]).pack(pady=20)
@@ -237,7 +345,7 @@ class FormularioCliente(ctk.CTkToplevel):
             self.entry_tel.insert(0, cliente.get("telefono", ""))
 
         self.btn_guardar = ctk.CTkButton(
-            self, text="💾 Guardar Clientes" if cliente else "➕ Registrar Cliente",
+            self, text="💾 Guardar Cambios" if cliente else "➕ Registrar Cliente",
             fg_color=COLORS["success"], hover_color="#219150", height=45,
             font=ctk.CTkFont(weight="bold"),
             command=self._guardar

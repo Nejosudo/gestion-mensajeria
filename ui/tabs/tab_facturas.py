@@ -2,8 +2,9 @@ import customtkinter as ctk
 import tkinter.ttk as ttk
 from core.config import COLORS, fmt_moneda, CTkToolTip
 from database import database as db
-from database.exportador import exportar_liquidaciones
+from database.exportador import exportar_liquidaciones, exportar_servicios_pendientes
 from CTkMessagebox import CTkMessagebox
+from database.database import eliminar_liquidacion
 from tkcalendar import DateEntry
 import tkinter as tk
 from tkinter import filedialog
@@ -104,12 +105,19 @@ class TabFacturas(ctk.CTkFrame):
         self.cal_desde.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
         self.cal_hasta.bind("<<DateEntrySelected>>", lambda e: self._on_date_changed())
 
-        ctk.CTkButton(
-            filtros_frame, text="📥 Exportar a Excel", height=34, width=170,
-            fg_color=COLORS["success"], hover_color="#27ae60",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            command=self._exportar_excel
-        ).pack(side="right", padx=15, pady=12)
+        # Buscador por mensajero
+        search_frame = ctk.CTkFrame(filtros_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=34)
+        search_frame.pack(side="right", padx=(0, 8), pady=12)
+        search_frame.pack_propagate(False)
+        ctk.CTkLabel(search_frame, text="🔍", font=ctk.CTkFont(size=13)).pack(side="left", padx=(8, 2))
+        self.entry_buscar_liq = ctk.CTkEntry(
+            search_frame, placeholder_text="Buscar mensajero...",
+            fg_color="transparent", border_width=0,
+            text_color=COLORS["text"], width=160
+        )
+        self.entry_buscar_liq.pack(side="left", fill="y", padx=(0, 6))
+        self.entry_buscar_liq.bind("<KeyRelease>", lambda e: self._cargar_liquidaciones())
+
 
         # Tabla de liquidaciones
         tabla_liq_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=12)
@@ -144,17 +152,39 @@ class TabFacturas(ctk.CTkFrame):
         self.tree_liquidaciones.bind("<Double-1>", self._abrir_tarjeta_liquidacion)
 
         # Resumen en la parte inferior
-        self.resumen_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=12, height=55)
+        self.resumen_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=12, height=60)
         self.resumen_frame.pack(fill="x", pady=(10, 0))
         self.resumen_frame.pack_propagate(False)
 
+        # Botones de acción (Inferior Izquierda)
+        self.btn_eliminar = ctk.CTkButton(
+            self.resumen_frame, text="🗑️ Eliminar Liquidación", height=38, width=180,
+            fg_color=COLORS["danger"], hover_color="#c0392b",
+            text_color="white",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=10,
+            command=self._eliminar_liquidacion
+        )
+        self.btn_eliminar.pack(side="left", padx=15, pady=10)
+
+        self.btn_exportar = ctk.CTkButton(
+            self.resumen_frame, text="📥 Exportar Reporte", height=38, width=170,
+            fg_color=COLORS["success"], hover_color="#219150",
+            text_color="white",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=10,
+            command=self._exportar_excel
+        )
+        self.btn_exportar.pack(side="left", padx=(0, 15), pady=10)
+
+        # Resumen (Derecha)
         self.lbl_resumen = ctk.CTkLabel(
             self.resumen_frame,
             text="Sin datos para mostrar",
-            font=ctk.CTkFont(size=13),
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=COLORS["text_muted"]
         )
-        self.lbl_resumen.pack(expand=True)
+        self.lbl_resumen.pack(side="right", padx=20)
 
         # Cargar liquidaciones al iniciar
         self.reload_data()
@@ -212,15 +242,15 @@ class TabFacturas(ctk.CTkFrame):
         ventana.lift()
         ventana.grab_set()
 
-        # Header estilo premium con botón cerrar
+        # Header estilo premium centrado
         header = ctk.CTkFrame(ventana, fg_color=COLORS["accent"], height=60, corner_radius=0)
         header.pack(fill="x")
         header.pack_propagate(False)
         ctk.CTkLabel(
-            header, text=f"Liquidación #{datos['ID']}",
+            header, text=f"Detalle de Liquidación #{datos['ID']}",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color="#ffffff"
-        ).pack(pady=16, side="left", padx=(20,0))
+        ).pack(pady=16)
 
         # Contenedor principal
         main_frame = ctk.CTkFrame(ventana, fg_color="transparent")
@@ -229,7 +259,7 @@ class TabFacturas(ctk.CTkFrame):
         # Info Mensajero y Fecha
         ctk.CTkLabel(
             main_frame, text=f"👤 {datos['Mensajero']}",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(size=18, weight="bold"),
             text_color=COLORS["text"]
         ).pack(anchor="w")
         ctk.CTkLabel(
@@ -238,68 +268,69 @@ class TabFacturas(ctk.CTkFrame):
             text_color=COLORS["text_muted"]
         ).pack(anchor="w", pady=(2, 10))
 
-        # Desglose
-        card = ctk.CTkFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=12)
-        card.pack(fill="x", pady=10)
-        # Número de servicios
-        ctk.CTkLabel(card, text="📦 N° Servicios liquidados:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["accent"]).pack(side="left", padx=10, pady=8)
-        ctk.CTkLabel(card, text=f"{len(servicios)}", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["text"]).pack(side="right", padx=10, pady=8)
+        # --- SECCIÓN SUPERIOR (Gris) ---
+        f_superior = ctk.CTkFrame(main_frame, fg_color="#f8f9fa", corner_radius=12)
+        f_superior.pack(fill="x", pady=10)
 
-        # Totales
-        totales_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        totales_frame.pack(fill="x", pady=(10, 0))
-        # Subtotal
-        ctk.CTkLabel(totales_frame, text="💰 Subtotal generado:", font=ctk.CTkFont(size=13)).pack(side="left")
-        ctk.CTkLabel(totales_frame, text=datos['Subtotal'], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"]).pack(side="right")
-        # Ganancia Mensajero
-        mensajero_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        mensajero_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(mensajero_frame, text="🏍️ Pago a Mensajero:", font=ctk.CTkFont(size=13)).pack(side="left")
-        # Format Neto Mens directly with negative sign since the dictionary doesn't have it
-        _neto_val = datos['Neto Mens.'].replace('$', '- $') if not datos['Neto Mens.'].startswith('-') else datos['Neto Mens.']
-        ctk.CTkLabel(mensajero_frame, text=_neto_val, font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
+        # Servicios realizados
+        f_srv = ctk.CTkFrame(f_superior, fg_color="transparent")
+        f_srv.pack(fill="x", padx=15, pady=(15, 8))
+        ctk.CTkLabel(f_srv, text="📦  Servicios liquidados", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(side="left")
+        ctk.CTkLabel(f_srv, text=str(len(servicios)), font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="right")
 
-        # Separador interno
-        ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
+        # Subtotal generado
+        f_sub = ctk.CTkFrame(f_superior, fg_color="transparent")
+        f_sub.pack(fill="x", padx=15, pady=8)
+        ctk.CTkLabel(f_sub, text="💰  Subtotal generado", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(side="left")
+        ctk.CTkLabel(f_sub, text=datos['Subtotal'], font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["text"]).pack(side="right")
 
-        # Ganancia Neta (empresa) Main Title
-        neto_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        neto_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(neto_frame, text="🏢 GANANCIA EMPRESA:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(neto_frame, text=datos['Comisión'], font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
-        # Aseo
-        aseo_g_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        aseo_g_frame.pack(fill="x", pady=(5, 0))
-        ctk.CTkLabel(aseo_g_frame, text="🧹 ASEO:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(aseo_g_frame, text=datos['Aseo'], font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["success"]).pack(side="right")
-        # Base
-        base_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        base_frame.pack(fill="x", pady=(10, 0))
-        ctk.CTkLabel(base_frame, text="🏦 BASE A DEVOLVER:", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
-        ctk.CTkLabel(base_frame, text=datos['Base'], font=ctk.CTkFont(size=18, weight="bold"), text_color="#e67e22").pack(side="right")
+        # Pago a Mensajero (Rojo y Negativo)
+        f_pago = ctk.CTkFrame(f_superior, fg_color="transparent")
+        f_pago.pack(fill="x", padx=15, pady=(8, 15))
+        ctk.CTkLabel(f_pago, text="🏍️   Pago a Mensajero", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"]).pack(side="left")
+        ctk.CTkLabel(f_pago, text=f"- {datos['Neto Mens.']}", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["danger"]).pack(side="right")
 
         # Separador
-        ctk.CTkFrame(main_frame, height=2, fg_color=COLORS["border"]).pack(fill="x", pady=15)
+        ctk.CTkFrame(main_frame, height=1, fg_color=COLORS["border"]).pack(fill="x", pady=15)
 
-        # Servicios incluidos
-        ctk.CTkLabel(main_frame, text="Servicios incluidos:", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=8, pady=(10,2))
+        # --- SECCIÓN INFERIOR ---
+        # Ganancia Empresa
+        f_ganancia = ctk.CTkFrame(main_frame, fg_color="transparent")
+        f_ganancia.pack(fill="x", pady=4)
+        ctk.CTkLabel(f_ganancia, text="🏢  GANANCIA EMPRESA:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"]).pack(side="left")
+        ctk.CTkLabel(f_ganancia, text=datos['Comisión'], font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+
+        # Aseo
+        f_aseo = ctk.CTkFrame(main_frame, fg_color="transparent")
+        f_aseo.pack(fill="x", pady=4)
+        ctk.CTkLabel(f_aseo, text="🖌️  ASEO:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"]).pack(side="left")
+        ctk.CTkLabel(f_aseo, text=datos['Aseo'], font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["success"]).pack(side="right")
+
+        # Base a Devolver
+        f_base = ctk.CTkFrame(main_frame, fg_color="transparent")
+        f_base.pack(fill="x", pady=(4, 15))
+        ctk.CTkLabel(f_base, text="🏠  BASE A DEVOLVER:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"]).pack(side="left")
+        ctk.CTkLabel(f_base, text=datos['Base'], font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["warning"]).pack(side="right")
+
+        # Separador para los servicios si existen
         if servicios:
-            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=520)
-            svc_frame.pack(fill="x", padx=8, pady=(5, 10))
+            ctk.CTkLabel(main_frame, text="Detalle de servicios:", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", pady=(5, 5))
+            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=150)
+            svc_frame.pack(fill="x", pady=(0, 10))
             for s in servicios:
                 desc = s.get("descripcion", "") or ""
-                texto_principal = f"🚴 ID: {s['id']}  |  💰 {fmt_moneda(s['valor'])}  |  🕒 {s['fecha']}"
+                texto_principal = f"🚴 ID: {s['id']}  |  💰 {fmt_moneda(s['valor'])}"
                 fila = ctk.CTkFrame(svc_frame, fg_color="transparent")
-                fila.pack(fill="x", padx=4, pady=(4, 0))
-                ctk.CTkLabel(fila, text=texto_principal, font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text"], anchor="w").pack(anchor="w", padx=4)
+                fila.pack(fill="x", padx=4, pady=2)
+                ctk.CTkLabel(fila, text=texto_principal, font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["text"], anchor="w").pack(anchor="w")
                 if desc:
-                    ctk.CTkLabel(fila, text=f"   📝 {desc}", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w").pack(anchor="w", padx=4)
-                ctk.CTkFrame(svc_frame, height=1, fg_color=COLORS["border"]).pack(fill="x", padx=4, pady=(4, 0))
+                    ctk.CTkLabel(fila, text=f"   📝 {desc}", font=ctk.CTkFont(size=10), text_color=COLORS["text_muted"], anchor="w").pack(anchor="w")
+                ctk.CTkFrame(svc_frame, height=1, fg_color=COLORS["border"]).pack(fill="x", padx=4)
         else:
-            ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", padx=8, pady=2)
+            ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", pady=2)
 
     def _cargar_liquidaciones(self):
-        """Recarga la tabla de liquidaciones según el filtro seleccionado."""
+        """Recarga la tabla de liquidaciones según el filtro seleccionado y la búsqueda."""
         for item in self.tree_liquidaciones.get_children():
             self.tree_liquidaciones.delete(item)
 
@@ -310,7 +341,11 @@ class TabFacturas(ctk.CTkFrame):
             filtro = f"{f_inicio}..{f_fin}"
             
         liquidaciones = db.obtener_liquidaciones(filtro)
-        # ...
+
+        # Aplicar filtro de búsqueda por mensajero
+        busqueda = self.entry_buscar_liq.get().strip().lower() if hasattr(self, 'entry_buscar_liq') else ""
+        if busqueda:
+            liquidaciones = [l for l in liquidaciones if busqueda in (l.get("mensajero_nombre") or "").lower()]
 
         total_neto = 0
         total_comision = 0
@@ -364,7 +399,8 @@ class TabFacturas(ctk.CTkFrame):
             self.cal_container.pack_forget()
 
     def _exportar_excel(self):
-        """Exporta las liquidaciones visibles a un archivo Excel."""
+        """Exporta las liquidaciones visibles a un archivo Excel
+        e incluye una hoja extra con los servicios pendientes actuales."""
         filtro = self.filtro_var.get()
         if filtro == "fecha":
             f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
@@ -392,22 +428,27 @@ class TabFacturas(ctk.CTkFrame):
             return
 
         try:
+            # 1. Exportar liquidaciones
             ruta = exportar_liquidaciones(datos, ruta_destino=ruta_destino)
+
+            # 2. Agregar hoja de servicios pendientes al mismo archivo
+            self._agregar_hoja_pendientes(ruta)
+
             # Preguntar si desea abrir la ubicación o ver el archivo
             msg = CTkMessagebox(
                 title="✅ Exportación Exitosa",
-                message=f"Archivo generado correctamente.",
+                message=f"Archivo generado correctamente.\n\nIncluye las liquidaciones y una hoja extra con los servicios pendientes de todos los mensajeros.",
                 icon="check", option_1="Abrir archivo", option_2="OK"
             )
             
             if msg.get() == "Abrir archivo":
                 try:
                     import subprocess, platform
-                    if platform.system() == 'Darwin':       # macOS
+                    if platform.system() == 'Darwin':
                         subprocess.call(('open', ruta))
-                    elif platform.system() == 'Windows':    # Windows
+                    elif platform.system() == 'Windows':
                         os.startfile(ruta)
-                    else:                                   # linux
+                    else:
                         subprocess.call(('xdg-open', ruta))
                 except Exception:
                     pass
@@ -417,10 +458,205 @@ class TabFacturas(ctk.CTkFrame):
                 message=f"No se pudo exportar:\n{str(e)}",
                 icon="cancel", option_1="OK"
             )
+
+    def _agregar_hoja_pendientes(self, ruta_xlsx: str):
+        """Abre el Excel ya generado y le agrega una hoja con servicios pendientes."""
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from datetime import datetime
+
+        wb = openpyxl.load_workbook(ruta_xlsx)
+
+        # Estilos
+        header_font  = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+        header_fill  = PatternFill(start_color="16213e", end_color="16213e", fill_type="solid")
+        header_align = Alignment(horizontal="center", vertical="center")
+        title_font   = Font(name="Calibri", bold=True, size=13, color="16213e")
+        sub_font     = Font(name="Calibri", italic=True, size=9, color="666666")
+        cell_font    = Font(name="Calibri", size=10)
+        money_font   = Font(name="Calibri", size=10, color="27ae60")
+        warn_fill    = PatternFill(start_color="fff3cd", end_color="fff3cd", fill_type="solid")
+        alt_fill     = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        border = Border(
+            left=Side(style="thin", color="CCCCCC"),
+            right=Side(style="thin", color="CCCCCC"),
+            top=Side(style="thin", color="CCCCCC"),
+            bottom=Side(style="thin", color="CCCCCC"),
+        )
+
+        ws = wb.create_sheet(title="Servicios Pendientes")
+
+        mensajeros = db.obtener_mensajeros()
+        todos = []
+        for m in mensajeros:
+            for s in db.obtener_servicios_pendientes(m["id"]):
+                todos.append({**s, "mensajero_nombre": m["nombre"], "mensajero_telefono": m["telefono"]})
+
+        # Título
+        ws.merge_cells("A1:H1")
+        ws["A1"].value = "SERVICIOS PENDIENTES DE LIQUIDAR — RESPALDO"
+        ws["A1"].font = title_font
+        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 28
+
+        ws.merge_cells("A2:H2")
+        ws["A2"].value = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}   |   Total servicios pendientes: {len(todos)}"
+        ws["A2"].font = sub_font
+        ws["A2"].alignment = Alignment(horizontal="center")
+
+        ws.merge_cells("A3:H3")
+        ws["A3"].value = "⚠️  Estos servicios aún NO han sido liquidados. Incluidos como respaldo de seguridad."
+        ws["A3"].font = Font(name="Calibri", bold=True, size=10, color="856404")
+        ws["A3"].fill = warn_fill
+        ws["A3"].alignment = Alignment(horizontal="center")
+
+        headers = ["ID", "Mensajero", "Teléfono", "Valor", "Descripción / Cliente", "Fecha y Hora", "Días pendiente", "Base Mensajero"]
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=c, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = border
+        ws.row_dimensions[4].height = 22
+
+        hoy = datetime.now().date()
+        total_general = 0.0
+
+        if not todos:
+            ws.merge_cells("A5:H5")
+            ws["A5"].value = "No hay servicios pendientes en este momento."
+            ws["A5"].font = Font(name="Calibri", italic=True, size=11, color="888888")
+            ws["A5"].alignment = Alignment(horizontal="center")
+        else:
+            for i, s in enumerate(todos, 5):
+                try:
+                    dias = (hoy - datetime.strptime(s["fecha"], "%Y-%m-%d %H:%M:%S").date()).days
+                except Exception:
+                    dias = "?"
+                total_general += s.get("valor", 0)
+                fondo = alt_fill if (i - 5) % 2 == 1 else None
+                fila = [
+                    s.get("id", ""),
+                    s.get("mensajero_nombre", ""),
+                    s.get("mensajero_telefono", ""),
+                    f"${s.get('valor', 0):,.0f}".replace(",", "."),
+                    s.get("descripcion", "") or "",
+                    s["fecha"],
+                    dias,
+                    "",
+                ]
+                for c, v in enumerate(fila, 1):
+                    cell = ws.cell(row=i, column=c, value=v)
+                    cell.font = money_font if c == 4 else cell_font
+                    cell.border = border
+                    cell.alignment = Alignment(horizontal="center" if c in (1, 4, 6, 7) else "left")
+                    if fondo:
+                        cell.fill = fondo
+
+            fila_total = len(todos) + 5
+            ws.cell(row=fila_total, column=3, value="TOTAL GENERAL:").font = Font(bold=True, size=11)
+            ws.cell(row=fila_total, column=4, value=f"${total_general:,.0f}".replace(",", ".")).font = Font(bold=True, color="27ae60", size=12)
+
+        for i, ancho in enumerate([8, 22, 15, 14, 35, 22, 14, 16], 1):
+            ws.column_dimensions[get_column_letter(i)].width = ancho
+
+        wb.save(ruta_xlsx)
     
     def _on_date_changed(self):
         """Al cambiar fecha en el calendario, activa el radio de fecha y recarga."""
         self.filtro_var.set("fecha")
         self._on_filter_changed()
 
+    def _eliminar_liquidacion(self):
+        """Elimina la liquidación seleccionada tras confirmar con contraseña."""
+        seleccion = self.tree_liquidaciones.selection()
+        if not seleccion:
+            CTkMessagebox(
+                title="⚠️ Sin selección",
+                message="Selecciona una liquidación de la tabla para eliminarla.",
+                icon="warning", option_1="OK"
+            )
+            return
 
+        valores = self.tree_liquidaciones.item(seleccion[0], "values")
+        id_liq   = valores[0]
+        mensajero = valores[1]
+        fecha    = valores[2]
+
+        # Confirmación previa
+        confirm = CTkMessagebox(
+            title="🗑️ Eliminar Liquidación",
+            message=(
+                f"¿Estás seguro de eliminar la liquidación #{id_liq}?\n\n"
+                f"👤 Mensajero: {mensajero}\n"
+                f"📅 Fecha: {fecha}\n\n"
+                f"⚠️ Los servicios de esta liquidación volverán a quedar PENDIENTES."
+            ),
+            icon="question", option_1="Cancelar", option_2="Eliminar"
+        )
+        if confirm.get() != "Eliminar":
+            return
+
+        # Pedir contraseña
+        self._solicitar_password(
+            titulo="🔒 Contraseña requerida",
+            mensaje="Ingresa la contraseña para eliminar esta liquidación:",
+            callback=lambda: self._ejecutar_eliminacion(int(id_liq))
+        )
+
+    def _ejecutar_eliminacion(self, id_liq: int):
+        """Realiza la eliminación efectiva de la liquidación."""
+        try:
+            eliminar_liquidacion(id_liq)
+            self._cargar_liquidaciones()
+            # Notificar a tab_gestion si existe (para actualizar pendientes)
+            CTkMessagebox(
+                title="✅ Eliminado",
+                message=f"La liquidación #{id_liq} fue eliminada correctamente.\nLos servicios volvieron a estado pendiente.",
+                icon="check", option_1="OK"
+            )
+        except Exception as e:
+            CTkMessagebox(
+                title="❌ Error",
+                message=f"No se pudo eliminar la liquidación:\n{e}",
+                icon="cancel", option_1="OK"
+            )
+
+    def _solicitar_password(self, titulo: str, mensaje: str, callback):
+        """Muestra un modal centrado pidiendo la contraseña de administrador."""
+        import customtkinter as ctk
+        root = self.winfo_toplevel()
+        modal = ctk.CTkToplevel(root)
+        modal.title(titulo)
+        modal.geometry("320x180")
+        modal.configure(fg_color=COLORS["bg_card"])
+        modal.transient(root)
+        modal.resizable(False, False)
+
+        modal.update_idletasks()
+        x = root.winfo_x() + (root.winfo_width() // 2) - 160
+        y = root.winfo_y() + (root.winfo_height() // 2) - 90
+        modal.geometry(f"+{x}+{y}")
+        modal.grab_set()
+
+        ctk.CTkLabel(modal, text=mensaje, font=ctk.CTkFont(size=12),
+                     wraplength=280).pack(pady=(20, 8), padx=20)
+        entry_pass = ctk.CTkEntry(modal, width=200, show="*")
+        entry_pass.pack(pady=5)
+        entry_pass.focus_set()
+
+        def verificar(event=None):
+            if entry_pass.get() == "ya le llego":
+                modal.destroy()
+                callback()
+            else:
+                CTkMessagebox(title="Error", message="Contraseña incorrecta.", icon="cancel")
+                entry_pass.delete(0, "end")
+                entry_pass.focus_set()
+
+        entry_pass.bind("<Return>", verificar)
+        ctk.CTkButton(
+            modal, text="Verificar", fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"], command=verificar
+        ).pack(pady=15)

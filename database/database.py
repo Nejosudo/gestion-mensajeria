@@ -414,6 +414,20 @@ def eliminar_gasto(id_gasto: int):
 
 # ── Liquidaciones ─────
 
+def eliminar_liquidacion(id_liquidacion: int):
+    """
+    Elimina una liquidación de la base de datos.
+    Los servicios asociados conservan su liquidacion_id (no vuelven a quedar pendientes)
+    pero al no existir ya el registro en la tabla Liquidaciones, ya no se contabilizan
+    en los informes financieros.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    # Ya no se resetean los servicios a NULL
+    cursor.execute("DELETE FROM Liquidaciones WHERE id = ?", (id_liquidacion,))
+    conn.commit()
+    conn.close()
+
 def obtener_servicios_por_liquidacion(id_liquidacion: int) -> list[dict]:
     """Obtiene los servicios asociados a una liquidación específica."""
     conn = get_connection()
@@ -436,16 +450,8 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | 
 
     subtotal = sum(s["valor"] for s in pendientes)
     comision = subtotal * 0.20
-    # Calcular días calendario transcurridos desde el servicio más antiguo
-    fechas = [datetime.strptime(s["fecha"], "%Y-%m-%d %H:%M:%S").date() for s in pendientes]
-    fecha_min = min(fechas)
-    fecha_hoy = datetime.now().date()
-    # Diferencia de días + 1 para incluir el día de inicio y fin
-    num_dias = (fecha_hoy - fecha_min).days + 1
-    descuento_aseo = 1000 * num_dias
-    
-    # El neto es la ganancia por el trabajo (80% menos aseo total)
-    neto = (subtotal * 0.80) - descuento_aseo
+    # El neto es la ganancia por el trabajo (80%)
+    neto = subtotal * 0.80
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = get_connection()
@@ -457,12 +463,19 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | 
     m_telefono = mensajero["telefono"] if mensajero else ""
 
     # Registrar liquidación (la base se guarda por separado)
+    # Aseo: mil por cada día único que contenga servicios
+    dias_unicos = set(s["fecha"].split(" ")[0] for s in pendientes)
+    aseo = len(dias_unicos) * 1000
+    
+    # El neto es el subtotal menos la comisión y el aseo
+    neto = subtotal - comision - aseo
+    
     cursor.execute("""
         INSERT INTO Liquidaciones (mensajero_id, mensajero_nombre, mensajero_telefono, fecha,
                                    subtotal_servicios, comision_empresa, descuento_aseo,
                                    base_prestada, neto_mensajero)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (mensajero_id, m_nombre, m_telefono, fecha, subtotal, comision, descuento_aseo, base, neto))
+    """, (mensajero_id, m_nombre, m_telefono, fecha, subtotal, comision, aseo, base, neto))
     liq_id = cursor.lastrowid
 
     # Asignar liquidacion_id a los servicios liquidados
@@ -478,10 +491,11 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | 
 
     return {
         "id": liq_id,
+        "mensajero": m_nombre,
         "cantidad_servicios": len(pendientes),
         "subtotal": subtotal,
         "comision": comision,
-        "descuento_aseo": descuento_aseo,
+        "descuento_aseo": aseo,
         "neto": neto,
         "fecha": fecha,
     }
@@ -497,12 +511,11 @@ def obtener_liquidaciones(filtro: str = "todo") -> list[dict]:
 
     query_base = """
         SELECT L.*, 
-               COALESCE(M.nombre, L.mensajero_nombre) AS mensajero_nombre, 
-               COALESCE(M.telefono, L.mensajero_telefono) AS mensajero_telefono,
-               COUNT(S.id) AS num_servicios
+               COALESCE(L.mensajero_nombre, M.nombre) AS mensajero_nombre, 
+               COALESCE(L.mensajero_telefono, M.telefono) AS mensajero_telefono,
+               (SELECT COUNT(*) FROM Servicios WHERE liquidacion_id = L.id) AS num_servicios
         FROM Liquidaciones L
         LEFT JOIN Mensajeros M ON L.mensajero_id = M.id
-        LEFT JOIN Servicios S ON S.liquidacion_id = L.id
     """
 
     if filtro == "hoy":

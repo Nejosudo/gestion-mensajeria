@@ -4,7 +4,8 @@ from datetime import datetime
 from CTkMessagebox import CTkMessagebox
 from core.config import COLORS, fmt_moneda
 from database import database as db
-from ui.modals import FormularioMensajero, VentanaResumen
+from ui.modals import FormularioMensajero, VentanaResumen, DialogoExito
+from database.exportador import exportar_servicios_pendientes
 import tkinter as tk
 
 class TabGestion(ctk.CTkFrame):
@@ -166,6 +167,7 @@ class TabGestion(ctk.CTkFrame):
         )
         self.entry_valor.pack(side="left", padx=2)
         self.entry_valor.insert(0, "5000")
+        self.entry_valor.bind("<Return>", lambda e: self._asignar_servicio())
 
         # Separador visual
         ctk.CTkFrame(barra_acciones, width=1, fg_color=COLORS["border"]).pack(side="left", fill="y", padx=15, pady=10)
@@ -242,7 +244,7 @@ class TabGestion(ctk.CTkFrame):
             columns=("id", "valor", "descripcion", "fecha"),
             show="headings",
             style="Dark.Treeview",
-            selectmode="browse"
+            selectmode="extended"
         )
         self.tree_servicios.heading("id", text="ID")
         self.tree_servicios.heading("valor", text="Valor")
@@ -347,10 +349,7 @@ class TabGestion(ctk.CTkFrame):
             self._messenger_cards[m["id"]] = (card, txt_frame, lbl_nombre, lbl_tel, status_dot)
 
     def _seleccionar_mensajero(self, id_: int, nombre: str, telefono: str):
-        # Limpiar búsqueda y quitar foco
-        self.entry_buscar.delete(0, "end")
-        self.focus()
-
+        # Guardar base actual del mensajero previo antes de cambiar
         if self.mensajero_seleccionado and hasattr(self, 'entry_base'):
             base_cruda = self.entry_base.get().replace("$", "").replace(".", "").replace(",", "").strip()
             val_to_save = base_cruda if base_cruda else "0"
@@ -360,15 +359,22 @@ class TabGestion(ctk.CTkFrame):
 
         self.mensajero_seleccionado = {"id": id_, "nombre": nombre, "telefono": telefono}
         self.lbl_mensajero_sel.configure(text=f"👤  {nombre}  —  📞 {telefono}")
-        
-        # ACTUALIZACIÓN VISUAL DE LA LISTA SIN RECARGAR (Evita Pestañeo)
-        for mid, (card, txt, ln, lt, dot) in self._messenger_cards.items():
-            is_new_sel = (mid == id_)
-            bg = COLORS["highlight"] if is_new_sel else COLORS["bg_card"]
-            card.configure(fg_color=bg, border_width=1 if is_new_sel else 0, border_color=COLORS["accent"] if is_new_sel else bg)
-            txt.configure(fg_color=bg)
-            ln.configure(fg_color=bg, font=ctk.CTkFont(size=18, weight="bold" if is_new_sel else "normal"))
-            lt.configure(fg_color=bg)
+        self.focus()
+
+        # Solo recargamos todo si el buscador tenía texto (porque la lista estaba filtrada)
+        busqueda_previa = self.entry_buscar.get().strip()
+        if busqueda_previa:
+            self.entry_buscar.delete(0, "end")
+            self._cargar_mensajeros() # Esto restaura la lista completa
+        else:
+            # Si no hay búsqueda, hacemos una actualización suave de colores sin pestañear
+            for mid, (card, txt, ln, lt, dot) in self._messenger_cards.items():
+                is_sel_card = (mid == id_)
+                bg = COLORS["highlight"] if is_sel_card else COLORS["bg_card"]
+                card.configure(fg_color=bg, border_width=1 if is_sel_card else 0, border_color=COLORS["accent"] if is_sel_card else bg)
+                txt.configure(fg_color=bg)
+                ln.configure(fg_color=bg, font=ctk.CTkFont(size=18, weight="bold" if is_sel_card else "normal"))
+                lt.configure(fg_color=bg)
 
         self._cargar_servicios_pendientes()
 
@@ -520,26 +526,35 @@ class TabGestion(ctk.CTkFrame):
     def _eliminar_servicio(self):
         seleccion = self.tree_servicios.selection()
         if not seleccion:
-            CTkMessagebox(title="⚠️ Sin selección", message="Selecciona un servicio de la tabla.",
+            CTkMessagebox(title="⚠️ Sin selección", message="Selecciona uno o más servicios de la tabla.",
                           icon="warning", option_1="OK")
             return
-        id_servicio = int(seleccion[0])
-        valores = self.tree_servicios.item(seleccion[0], "values")
-        # Assuming the status is not directly in values, but rather implied by being "pending"
-        # If there was a "status" column, we'd check that. For now, assume it's pending if in this list.
         
+        num_sel = len(seleccion)
+        if num_sel == 1:
+            id_servicio = int(seleccion[0])
+            valores = self.tree_servicios.item(seleccion[0], "values")
+            mensaje = f"¿Eliminar el servicio #{id_servicio} con valor {valores[1]}?"
+        else:
+            mensaje = f"¿Deseas eliminar los {num_sel} servicios seleccionados de forma masiva?"
+            
         msg = CTkMessagebox(
-            title="🗑️ Eliminar servicio",
-            message=f"¿Eliminar el servicio #{id_servicio} con valor {valores[1]}?",
+            title="🗑️ Confirmar eliminación",
+            message=mensaje,
             icon="question", option_1="Cancelar", option_2="Eliminar"
         )
         if msg.get() == "Eliminar":
             try:
-                db.eliminar_servicio(id_servicio)
+                for item_id in seleccion:
+                    id_serv = int(item_id)
+                    db.eliminar_servicio(id_serv)
+                
                 self._cargar_servicios_pendientes()
+                # Actualizar estatus visual del mensajero
                 if self.mensajero_seleccionado:
                     self._actualizar_status_visual_mensajero(self.mensajero_seleccionado["id"])
             except Exception as e:
+                CTkMessagebox(title="Error", message=f"No se pudo eliminar: {str(e)}", icon="cancel")
                 CTkMessagebox(title="Error", message=f"No se pudo eliminar el servicio: {e}", icon="cancel")
 
     def _on_doble_clic_servicio(self, event):
@@ -646,25 +661,21 @@ class TabGestion(ctk.CTkFrame):
         except ValueError:
             val_base = 0
 
-        # Calcular aseo por días calendario desde el más antiguo hasta hoy
-        fechas = [datetime.strptime(s["fecha"], "%Y-%m-%d %H:%M:%S").date() for s in pendientes]
-        fecha_min = min(fechas)
-        fecha_hoy = datetime.now().date()
-        num_dias = (fecha_hoy - fecha_min).days + 1
-        descuento_aseo_total = 1000 * num_dias
-
         subtotal = sum(s["valor"] for s in pendientes)
         comision = subtotal * 0.20
-        ganancia_neta = (subtotal * 0.80) - descuento_aseo_total
+        # Aseo: 1000 por cada día único (YYYY-MM-DD)
+        dias_unicos = set(s["fecha"].split(" ")[0] for s in pendientes)
+        aseo = len(dias_unicos) * 1000
+        ganancia_neta = subtotal - comision - aseo
 
         datos_liquidacion = {
-            "nombre": self.mensajero_seleccionado['nombre'],
-            "num_servicios": len(pendientes),
+            "mensajero": self.mensajero_seleccionado['nombre'],
+            "cant_servicios": len(pendientes),
             "subtotal": subtotal,
             "comision": comision,
-            "neto": ganancia_neta,
             "base": val_base,
-            "descuento_aseo": descuento_aseo_total
+            "pago_final": ganancia_neta,
+            "descuento_aseo": aseo
         }
 
         def confirmar_final():
@@ -682,10 +693,11 @@ class TabGestion(ctk.CTkFrame):
             if hasattr(self.app, 'refresh_facturas'):
                 self.app.refresh_facturas()
                 
-            CTkMessagebox(
-                title="✅ Éxito",
-                message="La liquidación se ha procesado correctamente.",
-                icon="check", option_1="Excelente"
+            DialogoExito(
+                self.app,
+                titulo="✅ Liquidación exitosa",
+                mensaje="La liquidación se ha procesado correctamente.",
+                boton="Excelente"
             )
 
         VentanaResumen(self.app, datos_liquidacion, confirmar_final)
@@ -727,3 +739,31 @@ class TabGestion(ctk.CTkFrame):
 
     def _on_inline_focus_out(self, event):
         self._cerrar_edicion_inline()
+
+    def _exportar_respaldo_pendientes(self):
+        """Exporta todos los servicios pendientes a Excel como respaldo de seguridad."""
+        try:
+            ruta = exportar_servicios_pendientes()
+            # Abrir el archivo automáticamente
+            import subprocess, sys
+            if sys.platform == "win32":
+                subprocess.Popen(["start", "", ruta], shell=True)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", ruta])
+            else:
+                subprocess.Popen(["xdg-open", ruta])
+
+            DialogoExito(
+                self.app,
+                titulo="💾 Respaldo guardado",
+                mensaje=f"Servicios pendientes exportados correctamente.\n\n📂 Guardado en el Escritorio como:\n{ruta.split(chr(92))[-1]}",
+                boton="Perfecto"
+            )
+        except Exception as e:
+            from CTkMessagebox import CTkMessagebox
+            CTkMessagebox(
+                master=self.app,
+                title="❌ Error al exportar",
+                message=f"No se pudo generar el respaldo:\n{e}",
+                icon="cancel", option_1="OK"
+            )
