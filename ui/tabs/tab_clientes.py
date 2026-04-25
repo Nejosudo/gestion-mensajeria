@@ -11,6 +11,7 @@ class TabClientes(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
         self.seleccionados = {} # id: {nombre, servicios}
+        self._selected_cards = {} # id: (card_widget, label_servicios)
         self._build_ui()
         self.reload_data()
         self.pack(fill="both", expand=True)
@@ -270,24 +271,19 @@ class TabClientes(ctk.CTkFrame):
             filtro = f"{f_inicio}..{f_fin}"
             
         for cid in list(self.seleccionados.keys()):
-            # Buscamos el cliente específico para ver su total con el filtro actual
-            # Podríamos optimizar esto, pero por ahora consultamos
-            c_info = db.obtener_clientes(filtro=filtro) # Esto es pesado.
-            # Mejor: solo buscamos en el Treeview si está presente, o consultamos individualmente.
-            
             # Buscamos en los items actuales del tree
             found = False
             for item in self.tree.get_children():
                 vals = self.tree.item(item, "values")
                 if str(vals[0]) == str(cid):
-                    self.seleccionados[cid]["servicios"] = int(vals[4])
+                    serv_nuevos = int(vals[4])
+                    self.seleccionados[cid]["servicios"] = serv_nuevos
+                    # Actualizar widget si existe
+                    if cid in self._selected_cards:
+                        _, lbl_serv = self._selected_cards[cid]
+                        lbl_serv.configure(text=str(serv_nuevos))
                     found = True
                     break
-            
-            if not found:
-                # Si no está en el tree (por búsqueda), igual mantenemos el dato pero podría ser 0 o el anterior.
-                # Para ser exactos, deberíamos consultar la DB para este cliente solo.
-                pass
         
         self._update_panel_derecho()
 
@@ -315,41 +311,59 @@ class TabClientes(ctk.CTkFrame):
             self._update_panel_derecho()
 
     def _update_panel_derecho(self):
-        # Limpiar panel derecho
-        for w in self.scroll_seleccion.winfo_children():
-            w.destroy()
-            
-        total_seleccion = 0
-        
+        # 1. Identificar cambios
+        ids_nuevos = list(self.seleccionados.keys())
+        ids_actuales = list(self._selected_cards.keys())
+
+        # 2. Eliminar los que ya no están
+        for cid in ids_actuales:
+            if cid not in ids_nuevos:
+                card, _ = self._selected_cards.pop(cid)
+                card.destroy()
+
         if not self.seleccionados:
             self.lbl_total_seleccion.configure(text="0")
             return
 
-        for cid, info in self.seleccionados.items():
+        # 3. Crear o Reordenar (usando Grid para estabilidad)
+        self.scroll_seleccion.grid_columnconfigure(0, weight=1)
+        total_seleccion = 0
+        
+        for i, (cid, info) in enumerate(self.seleccionados.items()):
             total_seleccion += info["servicios"]
             
-            card = ctk.CTkFrame(self.scroll_seleccion, fg_color=COLORS["bg_input"], corner_radius=6)
-            card.pack(fill="x", pady=2, padx=5)
-            
-            ctk.CTkLabel(
-                card, text=f"👤 {info['nombre']}", 
-                font=ctk.CTkFont(size=12, weight="bold"), 
-                anchor="w", wraplength=160
-            ).pack(side="left", padx=10, pady=5)
-            
-            # Botón para quitar
-            btn_remove = ctk.CTkButton(
-                card, text="✕", width=20, height=20, fg_color="transparent", 
-                hover_color=COLORS["danger"], text_color=COLORS["text_muted"],
-                command=lambda c=cid: self._quitar_seleccion(c)
-            )
-            btn_remove.pack(side="right", padx=5)
+            if cid not in self._selected_cards:
+                # CREAR CARD
+                card = ctk.CTkFrame(self.scroll_seleccion, fg_color=COLORS["bg_input"], corner_radius=6)
+                card.grid(row=i, column=0, pady=2, padx=5, sticky="ew")
+                
+                ctk.CTkLabel(
+                    card, text=f"👤 {info['nombre']}", 
+                    font=ctk.CTkFont(size=12, weight="bold"), 
+                    anchor="w", wraplength=160
+                ).pack(side="left", padx=10, pady=5)
+                
+                # Botón para quitar
+                btn_remove = ctk.CTkButton(
+                    card, text="✕", width=20, height=20, fg_color="transparent", 
+                    hover_color=COLORS["danger"], text_color=COLORS["text_muted"],
+                    command=lambda c=cid: self._quitar_seleccion(c)
+                )
+                btn_remove.pack(side="right", padx=5)
 
-            ctk.CTkLabel(
-                card, text=str(info['servicios']), 
-                font=ctk.CTkFont(size=12, weight="bold"), 
-                text_color=COLORS["accent"]
-            ).pack(side="right", padx=5, pady=5)
+                lbl_serv = ctk.CTkLabel(
+                    card, text=str(info['servicios']), 
+                    font=ctk.CTkFont(size=12, weight="bold"), 
+                    text_color=COLORS["accent"]
+                )
+                lbl_serv.pack(side="right", padx=5, pady=5)
+                
+                self._selected_cards[cid] = (card, lbl_serv)
+            else:
+                # SOLO ACTUALIZAR POSICION Y DATOS
+                card, lbl_serv = self._selected_cards[cid]
+                card.grid(row=i, column=0, pady=2, padx=5, sticky="ew")
+                lbl_serv.configure(text=str(info["servicios"]))
             
         self.lbl_total_seleccion.configure(text=str(total_seleccion))
 
