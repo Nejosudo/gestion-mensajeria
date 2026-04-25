@@ -778,7 +778,7 @@ class TabGestion(ctk.CTkFrame):
             DialogoExito(
                 self.app,
                 titulo="💾 Respaldo guardado",
-                mensaje=f"Servicios pendientes exportados correctamente.\n\n📂 Guardado en el Escritorio como:\n{ruta.split(chr(92))[-1]}",
+                mensaje=f"Servicios pendientes exportados correctamente.\n\n📂 Guardado en el Escritorio como:\n{os.path.basename(ruta)}",
                 boton="Perfecto"
             )
         except Exception as e:

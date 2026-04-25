@@ -105,7 +105,7 @@ class TabTurnero(ctk.CTkFrame):
             is_first = (i == 0)
             bg_color = "#2c3e50" if is_first else COLORS["bg_input"]
             border_w = 2 if is_first else 0
-            border_c = "#27ae60" if is_first else "transparent"
+            border_c = "#27ae60" if is_first else bg_color
 
             card = ctk.CTkFrame(
                 self.scroll_cola, 

@@ -570,21 +570,52 @@ def crear_cliente(nombre: str, direccion: str = "", telefono: str = "") -> int:
     conn.close()
     return nuevo_id if nuevo_id is not None else 0
 
-def obtener_clientes(busqueda: str = "") -> list[dict]:
+def obtener_clientes(busqueda: str = "", filtro: str = "todo") -> list[dict]:
     conn = get_connection()
-    query = """
+    hoy = datetime.now()
+    
+    # Construir la condición de fecha para las subconsultas
+    fecha_cond = ""
+    f_params = []
+    
+    if filtro == "hoy":
+        fecha_cond = " AND fecha LIKE ?"
+        f_params.append(f"{hoy.strftime('%Y-%m-%d')}%")
+    elif filtro == "semana":
+        inicio_semana = (hoy - timedelta(days=hoy.weekday())).strftime("%Y-%m-%d")
+        fecha_cond = " AND fecha >= ?"
+        f_params.append(inicio_semana)
+    elif filtro == "mes":
+        inicio_mes = hoy.strftime("%Y-%m-01")
+        fecha_cond = " AND fecha >= ?"
+        f_params.append(inicio_mes)
+    elif "-" in filtro and len(filtro) == 10: # YYYY-MM-DD
+        fecha_cond = " AND fecha LIKE ?"
+        f_params.append(f"{filtro}%")
+    elif ".." in filtro: # YYYY-MM-DD..YYYY-MM-DD
+        inicio, fin = filtro.split("..")
+        fecha_cond = " AND fecha >= ? AND fecha <= ?"
+        f_params.append(f"{inicio} 00:00:00")
+        f_params.append(f"{fin} 23:59:59")
+
+    query = f"""
         SELECT C.*, 
-               (SELECT COUNT(*) FROM Servicios WHERE cliente_id = C.id OR cliente_nombre = C.nombre) as total_servicios,
-               (SELECT MAX(fecha) FROM Servicios WHERE cliente_id = C.id OR cliente_nombre = C.nombre) as ultima_fecha
+               (SELECT COUNT(*) FROM Servicios WHERE (cliente_id = C.id OR cliente_nombre = C.nombre) {fecha_cond}) as total_servicios,
+               (SELECT MAX(fecha) FROM Servicios WHERE (cliente_id = C.id OR cliente_nombre = C.nombre) {fecha_cond}) as ultima_fecha
         FROM Clientes C
     """
+    
     params = []
+    # Usar los parámetros de fecha en ambas subconsultas (total_servicios y ultima_fecha)
+    # Sin embargo, como están en el SELECT, debemos duplicar f_params para cada subconsulta
+    full_params = f_params + f_params
+    
     if busqueda:
         query += " WHERE C.nombre LIKE ? OR C.direccion LIKE ? OR C.telefono LIKE ?"
-        params = [f"%{busqueda}%", f"%{busqueda}%", f"%{busqueda}%"]
+        full_params += [f"%{busqueda}%", f"%{busqueda}%", f"%{busqueda}%"]
     
     query += " ORDER BY C.nombre"
-    rows = conn.execute(query, params).fetchall()
+    rows = conn.execute(query, full_params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
