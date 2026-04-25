@@ -11,6 +11,9 @@ class TabTurnero(ctk.CTkFrame):
         self.app = app_controller
         self.pack(fill="both", expand=True)
 
+        self._disponibles_cards = {} # Trackers para evitar parpadeo
+        self._cola_cards = {}
+
         self._build_ui()
         self.reload_data()
 
@@ -75,129 +78,128 @@ class TabTurnero(ctk.CTkFrame):
         self._cargar_disponibles()
         self._cargar_cola()
 
-    def _cargar_disponibles(self):
-        for widget in self.scroll_disponibles.winfo_children():
-            widget.destroy()
+    def _on_buscar_key_release(self, event=None):
+        """Debounce más ágil."""
+        if hasattr(self, "_search_job") and self._search_job:
+            self.after_cancel(self._search_job)
+        self._search_job = self.after(100, self._cargar_disponibles)
 
+    def _cargar_disponibles(self):
         busqueda = self.entry_buscar.get().strip()
         mensajeros = db.obtener_mensajeros(busqueda)
         cola_actual = [t["mensajero_id"] for t in db.obtener_cola_turnos()]
+        
+        # 1. Obtener datos
+        ids_nuevos = [m["id"] for m in mensajeros if m["id"] not in cola_actual]
+        ids_actuales = list(self._disponibles_cards.keys())
 
-        if not mensajeros:
-            ctk.CTkLabel(
-                self.scroll_disponibles, text="No se encontraron coincidencias",
-                font=ctk.CTkFont(size=11, slant="italic"),
-                text_color=COLORS["text_muted"]
-            ).pack(pady=20)
+        for mid in ids_actuales:
+            if mid not in ids_nuevos:
+                card = self._disponibles_cards.pop(mid)
+                card.destroy()
+
+        if not ids_nuevos:
+            for w in self.scroll_disponibles.winfo_children(): w.destroy()
+            self._disponibles_cards.clear()
+            ctk.CTkLabel(self.scroll_disponibles, text="No hay mensajeros", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"]).grid(row=0, column=0, pady=20, sticky="ew")
+            self.scroll_disponibles.grid_columnconfigure(0, weight=1)
             return
 
-        for m in mensajeros:
-            if m["id"] in cola_actual:
-                continue
+        # Limpiar mensajes
+        for w in self.scroll_disponibles.winfo_children():
+            if isinstance(w, ctk.CTkLabel) and "No hay" in w.cget("text"): w.destroy()
 
-            # Card design similar to TabGestion
-            card = ctk.CTkFrame(
-                self.scroll_disponibles, 
-                fg_color=COLORS["bg_input"], 
-                corner_radius=10, 
-                height=70
-            )
-            card.pack(fill="x", pady=4, padx=5)
-            card.pack_propagate(False)
+        # 2. Reordenar o Crear usando GRID
+        self.scroll_disponibles.grid_columnconfigure(0, weight=1)
+        for i, m in enumerate(mensajeros):
+            if m["id"] in cola_actual: continue
+            mid = m["id"]
 
-            # Contenedor Texto
-            txt_frame = ctk.CTkFrame(card, fg_color=COLORS["bg_input"])
-            txt_frame.pack(side="left", fill="both", expand=True, padx=(12, 5), pady=8)
+            if mid not in self._disponibles_cards:
+                card = ctk.CTkFrame(self.scroll_disponibles, fg_color=COLORS["bg_input"], corner_radius=10, height=70)
+                card.grid(row=i, column=0, pady=4, padx=5, sticky="ew")
+                card.grid_propagate(False)
 
-            ctk.CTkLabel(
-                txt_frame, text=f"👤 {m['nombre']}",
-                font=ctk.CTkFont(size=15, weight="bold"),
-                text_color=COLORS["text"],
-                anchor="w"
-            ).pack(fill="x", side="top")
+                txt_frame = ctk.CTkFrame(card, fg_color=COLORS["bg_input"])
+                txt_frame.pack(side="left", fill="both", expand=True, padx=(12, 5), pady=8)
 
-            ctk.CTkLabel(
-                txt_frame, text=f"📞 {m['telefono']}",
-                font=ctk.CTkFont(size=11),
-                text_color=COLORS["text_muted"],
-                anchor="w"
-            ).pack(fill="x", side="top")
+                lbl_n = ctk.CTkLabel(txt_frame, text=f"👤 {m['nombre']}", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["text"], anchor="w")
+                lbl_n.pack(fill="x", side="top")
 
-            # Botón "+" verde a la derecha
-            ctk.CTkButton(
-                card, text="➕", width=40, height=35,
-                fg_color=COLORS["success"], hover_color="#219150",
-                font=ctk.CTkFont(size=18, weight="bold"),
-                text_color="#ffffff",
-                command=lambda mid=m["id"]: self._registrar_llegada(mid)
-            ).pack(side="right", padx=10)
+                lbl_t = ctk.CTkLabel(txt_frame, text=f"📞 {m['telefono']}", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w")
+                lbl_t.pack(fill="x", side="top")
+
+                ctk.CTkButton(card, text="➕", width=40, height=35, fg_color=COLORS["success"], hover_color="#219150", font=ctk.CTkFont(size=18, weight="bold"), command=lambda mid=mid: self._registrar_llegada(mid)).pack(side="right", padx=10)
+                self._disponibles_cards[mid] = card
+            else:
+                card = self._disponibles_cards[mid]
+                card.grid(row=i, column=0, pady=4, padx=5, sticky="ew")
 
     def _cargar_cola(self):
-        for widget in self.scroll_cola.winfo_children():
-            widget.destroy()
-
         cola = db.obtener_cola_turnos()
+        ids_nuevos = [t["mensajero_id"] for t in cola]
+        ids_actuales = list(self._cola_cards.keys())
+
+        for mid in ids_actuales:
+            if mid not in ids_nuevos:
+                widgets = self._cola_cards.pop(mid)
+                widgets[0].destroy()
+
         if not cola:
-            ctk.CTkLabel(
-                self.scroll_cola, text="No hay mensajeros en turno",
-                font=ctk.CTkFont(size=13, slant="italic"),
-                text_color=COLORS["text_muted"]
-            ).pack(pady=30)
+            for w in self.scroll_cola.winfo_children(): w.destroy()
+            self._cola_cards.clear()
+            ctk.CTkLabel(self.scroll_cola, text="No hay nadie en turno", font=ctk.CTkFont(size=13, slant="italic"), text_color=COLORS["text_muted"]).grid(row=0, column=0, pady=30, sticky="ew")
+            self.scroll_cola.grid_columnconfigure(0, weight=1)
             return
 
+        # Limpiar mensajes
+        for w in self.scroll_cola.winfo_children():
+            if isinstance(w, ctk.CTkLabel) and "No hay" in w.cget("text"): w.destroy()
+
+        # 2. Reordenar o Crear usando GRID
+        self.scroll_cola.grid_columnconfigure(0, weight=1)
         for i, t in enumerate(cola):
+            mid = t["mensajero_id"]
             is_first = (i == 0)
             bg_color = "#2c3e50" if is_first else COLORS["bg_input"]
-            card_kwargs = {
-                "master": self.scroll_cola,
-                "fg_color": bg_color,
-                "corner_radius": 10,
-                "height": 70
-            }
-            if is_first:
-                card_kwargs["border_width"] = 2
-                card_kwargs["border_color"] = "#27ae60"
 
-            card = ctk.CTkFrame(**card_kwargs)
-            card.pack(fill="x", pady=5, padx=5)
-            card.pack_propagate(False)
+            if mid not in self._cola_cards:
+                card_kwargs = {"master": self.scroll_cola, "fg_color": bg_color, "corner_radius": 10, "height": 70}
+                if is_first:
+                    card_kwargs["border_width"] = 2
+                    card_kwargs["border_color"] = "#27ae60"
+                card = ctk.CTkFrame(**card_kwargs)
+                card.grid(row=i, column=0, pady=5, padx=5, sticky="ew")
+                card.grid_propagate(False)
 
-            # Posición
-            pos_lbl = ctk.CTkLabel(
-                card, text=str(i + 1),
-                font=ctk.CTkFont(size=20, weight="bold"),
-                text_color="#27ae60" if is_first else COLORS["text_muted"],
-                width=40
-            )
-            pos_lbl.pack(side="left", padx=(10, 5))
+                pos_lbl = ctk.CTkLabel(card, text=str(i + 1), font=ctk.CTkFont(size=20, weight="bold"), text_color="#27ae60" if is_first else COLORS["text_muted"], width=40)
+                pos_lbl.pack(side="left", padx=(10, 5))
 
-            # Info
-            info_frame = ctk.CTkFrame(card, fg_color="transparent")
-            info_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+                info_frame = ctk.CTkFrame(card, fg_color="transparent")
+                info_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-            ctk.CTkLabel(
-                info_frame, text=t["nombre"],
-                font=ctk.CTkFont(size=15, weight="bold"),
-                text_color="#ffffff" if is_first else COLORS["text"],
-                anchor="w"
-            ).pack(fill="x")
+                lbl_n = ctk.CTkLabel(info_frame, text=t["nombre"], font=ctk.CTkFont(size=15, weight="bold"), text_color="#ffffff" if is_first else COLORS["text"], anchor="w")
+                lbl_n.pack(fill="x")
 
-            ctk.CTkLabel(
-                info_frame, text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}",
-                font=ctk.CTkFont(size=11),
-                text_color="#bdc3c7" if is_first else COLORS["text_muted"],
-                anchor="w"
-            ).pack(fill="x")
+                lbl_f = ctk.CTkLabel(info_frame, text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}", font=ctk.CTkFont(size=11), text_color="#bdc3c7" if is_first else COLORS["text_muted"], anchor="w")
+                lbl_f.pack(fill="x")
 
-            # Botones de acción
-            btns_frame = ctk.CTkFrame(card, fg_color="transparent")
-            btns_frame.pack(side="right", padx=10)
+                btns_frame = ctk.CTkFrame(card, fg_color="transparent")
+                btns_frame.pack(side="right", padx=10)
 
-            ctk.CTkButton(
-                btns_frame, text="❌", width=30, height=28,
-                fg_color="#e74c3c", hover_color="#c0392b",
-                command=lambda mid=t["mensajero_id"]: self._quitar_turno(mid)
-            ).pack(side="right", padx=2)
+                ctk.CTkButton(btns_frame, text="❌", width=30, height=28, fg_color="#e74c3c", hover_color="#c0392b", command=lambda mid=mid: self._quitar_turno(mid)).pack(side="right", padx=2)
+                self._cola_cards[mid] = (card, pos_lbl, lbl_n, lbl_f)
+            else:
+                card, pos_lbl, lbl_n, lbl_f = self._cola_cards[mid]
+                card.grid(row=i, column=0, pady=5, padx=5, sticky="ew")
+                card.configure(fg_color=bg_color)
+                if is_first:
+                    card.configure(border_width=2, border_color="#27ae60")
+                else:
+                    card.configure(border_width=0)
+                pos_lbl.configure(text=str(i + 1), text_color="#27ae60" if is_first else COLORS["text_muted"])
+                lbl_n.configure(text=t["nombre"], text_color="#ffffff" if is_first else COLORS["text"])
+                lbl_f.configure(text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}", text_color="#bdc3c7" if is_first else COLORS["text_muted"])
 
 
     def _registrar_llegada(self, mid):

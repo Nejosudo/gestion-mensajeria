@@ -163,31 +163,6 @@ class TabGestion(ctk.CTkFrame):
         self.entry_valor.pack(side="left", padx=2)
         self.entry_valor.insert(0, "5000")
 
-        # Sección Cliente (Searchable)
-        section_cli = ctk.CTkFrame(barra_acciones, fg_color="transparent")
-        section_cli.pack(side="left", fill="y", padx=5)
-        
-        ctk.CTkLabel(section_cli, text="👤", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
-        self.entry_cliente = ctk.CTkEntry(
-            section_cli, width=140, placeholder_text="Cliente (opcional)...",
-            fg_color=COLORS["bg_card"], border_color=COLORS["border"],
-            text_color=COLORS["text"], corner_radius=6, height=28
-        )
-        self.entry_cliente.pack(side="left", padx=2)
-        self.entry_cliente.bind("<KeyRelease>", self._on_cliente_key_release)
-
-        # Sección Descripción (Nota opcional)
-        section_desc = ctk.CTkFrame(barra_acciones, fg_color="transparent")
-        section_desc.pack(side="left", fill="y", padx=5)
-        
-        ctk.CTkLabel(section_desc, text="📝", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
-        self.entry_desc_svc = ctk.CTkEntry(
-            section_desc, width=150, placeholder_text="Nota opcional...",
-            fg_color=COLORS["bg_card"], border_color=COLORS["border"],
-            text_color=COLORS["text"], corner_radius=6, height=28
-        )
-        self.entry_desc_svc.pack(side="left", padx=2)
-
         # Separador visual
         ctk.CTkFrame(barra_acciones, width=1, fg_color=COLORS["border"]).pack(side="left", fill="y", padx=10, pady=12)
 
@@ -195,7 +170,7 @@ class TabGestion(ctk.CTkFrame):
         section_base = ctk.CTkFrame(barra_acciones, fg_color="transparent")
         section_base.pack(side="left", fill="y")
 
-        ctk.CTkLabel(section_base, text="🏦", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
+        ctk.CTkLabel(section_base, text="🏦 Base", font=ctk.CTkFont(size=14)).pack(side="left", padx=2)
         self.entry_base = ctk.CTkEntry(
             section_base, width=75, placeholder_text="0",
             fg_color=COLORS["bg_card"], border_color=COLORS["border"],
@@ -284,107 +259,87 @@ class TabGestion(ctk.CTkFrame):
         self.tree_servicios.bind("<Double-1>", self._on_doble_clic_servicio)
 
     def _on_search_key_release(self, event=None):
-        if self._after_search_id:
-            self.after_cancel(self._after_search_id)
-        self._after_search_id = self.after(300, self._cargar_mensajeros)
-
-    def _on_cliente_key_release(self, event=None):
-        self._autocomplete_key_release(event, self.entry_cliente)
+        """Debounce más corto para mayor agilidad."""
+        if hasattr(self, "_search_job") and self._search_job:
+            self.after_cancel(self._search_job)
+        self._search_job = self.after(100, self._cargar_mensajeros)
 
     def _cargar_mensajeros(self):
-        for widget in self.lista_mensajeros.winfo_children():
-            widget.destroy()
-        self._messenger_cards = {}
-
         busqueda = self.entry_buscar.get().strip()
         
-        # Obtener cola del turnero para el ordenamiento
+        # 1. Obtener datos necesarios
         cola = db.obtener_cola_turnos()
         ids_en_cola = [t["mensajero_id"] for t in cola]
         pos_cola = {id_m: i for i, id_m in enumerate(ids_en_cola)}
-
-        # Obtener todos los mensajeros que coinciden con la búsqueda
         mensajeros_all = db.obtener_mensajeros(busqueda)
         
-        # Separar y ordenar
+        # 2. Separar y ordenar
         en_cola = [m for m in mensajeros_all if m["id"] in pos_cola]
-        en_cola.sort(key=lambda x: pos_cola[x["id"]]) # Respetar orden del turnero
-        
+        en_cola.sort(key=lambda x: pos_cola[x["id"]])
         fuera_cola = [m for m in mensajeros_all if m["id"] not in pos_cola]
-        # fuera_cola ya viene ordenado por nombre desde la DB
-        
         lista_final = en_cola + fuera_cola
 
+        # 3. Limpieza y Reconciliación (Grid es más estable)
+        ids_nuevos = [m["id"] for m in lista_final]
+        ids_actuales = list(self._messenger_cards.keys())
+
+        for mid in ids_actuales:
+            if mid not in ids_nuevos:
+                widgets = self._messenger_cards.pop(mid)
+                widgets[0].destroy()
+
         if not lista_final:
-            ctk.CTkLabel(
-                self.lista_mensajeros, text="No se encontraron coincidencias",
-                font=ctk.CTkFont(size=11, slant="italic"),
-                text_color=COLORS["text_muted"]
-            ).pack(pady=20)
+            for w in self.lista_mensajeros.winfo_children(): w.destroy()
+            self._messenger_cards.clear()
+            ctk.CTkLabel(self.lista_mensajeros, text="No hay mensajeros", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"]).grid(row=0, column=0, pady=20, sticky="ew")
+            self.lista_mensajeros.grid_columnconfigure(0, weight=1)
             return
 
-        for m in lista_final:
-            is_sel = self.mensajero_seleccionado is not None and self.mensajero_seleccionado.get("id") == m["id"]
+        # Limpiar mensaje de "No hay" si existe
+        for w in self.lista_mensajeros.winfo_children():
+            if isinstance(w, ctk.CTkLabel) and "No hay" in w.cget("text"): w.destroy()
+
+        # 4. Actualizar o Crear usando GRID
+        self.lista_mensajeros.grid_columnconfigure(0, weight=1)
+        for i, m in enumerate(lista_final):
+            mid = m["id"]
+            is_sel = self.mensajero_seleccionado is not None and self.mensajero_seleccionado.get("id") == mid
             tiene_pedidos = (m.get("servicios_pendientes", 0) > 0)
             color_status = COLORS["success"] if tiene_pedidos else COLORS["danger"]
             bg_color_card = COLORS["highlight"] if is_sel else COLORS["bg_card"]
-            
-            # --- CARD DEL MENSAJERO ---
-            card = ctk.CTkFrame(
-                self.lista_mensajeros,
-                fg_color=bg_color_card,
-                border_width=1 if is_sel else 0,
-                border_color=COLORS["accent"] if is_sel else bg_color_card,
-                corner_radius=10,
-                height=70, 
-                cursor="hand2"
-            )
-            card.pack(fill="x", pady=4, padx=8)
-            card.pack_propagate(False)
 
-            # Contenedor Texto (Sin usar 'transparent' para total estabilidad)
-            txt_frame = ctk.CTkFrame(card, fg_color=bg_color_card)
-            txt_frame.pack(side="left", fill="both", expand=True, padx=(12, 5), pady=8)
+            if mid not in self._messenger_cards:
+                card = ctk.CTkFrame(self.lista_mensajeros, fg_color=bg_color_card, corner_radius=10, height=70, cursor="hand2")
+                card.grid(row=i, column=0, pady=4, padx=8, sticky="ew")
+                card.grid_propagate(False)
 
-            lbl_nombre = ctk.CTkLabel(
-                txt_frame, text=f"👤 {m['nombre']}",
-                font=ctk.CTkFont(size=18, weight="bold" if is_sel else "normal"),
-                text_color=COLORS["text"],
-                anchor="w",
-                wraplength=170,
-                fg_color=bg_color_card
-            )
-            lbl_nombre.pack(fill="x", side="top")
+                txt_frame = ctk.CTkFrame(card, fg_color=bg_color_card)
+                txt_frame.pack(side="left", fill="both", expand=True, padx=(12, 5), pady=8)
 
-            lbl_tel = ctk.CTkLabel(
-                txt_frame, text=f"📞 {m['telefono']}",
-                font=ctk.CTkFont(size=12),
-                text_color=COLORS["text_muted"],
-                anchor="w",
-                fg_color=bg_color_card
-            )
-            lbl_tel.pack(fill="x", side="top")
+                ln = ctk.CTkLabel(txt_frame, text=f"👤 {m['nombre']}", font=ctk.CTkFont(size=18, weight="bold" if is_sel else "normal"), text_color=COLORS["text"], anchor="w", wraplength=170, fg_color=bg_color_card)
+                ln.pack(fill="x", side="top")
 
-            # Indicador de Estatus (Derecha)
-            status_dot = ctk.CTkFrame(
-                card, width=12, height=12, 
-                corner_radius=6, 
-                fg_color=color_status
-            )
-            status_dot.pack(side="right", padx=15)
+                lt = ctk.CTkLabel(txt_frame, text=f"📞 {m['telefono']}", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"], anchor="w", fg_color=bg_color_card)
+                lt.pack(fill="x", side="top")
 
-            # Bindings manuales (estos son 100% compatibles)
-            def on_click(event, mid=m["id"], mn=m["nombre"], mt=m["telefono"]):
-                self._seleccionar_mensajero(mid, mn, mt)
+                dot = ctk.CTkFrame(card, width=12, height=12, corner_radius=6, fg_color=color_status)
+                dot.pack(side="right", padx=15)
 
-            card.bind("<Button-1>", on_click)
-            lbl_nombre.bind("<Button-1>", on_click)
-            lbl_tel.bind("<Button-1>", on_click)
-            txt_frame.bind("<Button-1>", on_click)
-            status_dot.bind("<Button-1>", on_click)
-            
-            # Guardar referencia para actualizar sin recargar lista
-            self._messenger_cards[m["id"]] = (card, txt_frame, lbl_nombre, lbl_tel, status_dot)
+                def on_click(event, _mid=mid, _mn=m["nombre"], _mt=m["telefono"]):
+                    self._seleccionar_mensajero(_mid, _mn, _mt)
+
+                for w in (card, txt_frame, ln, lt, dot): w.bind("<Button-1>", on_click)
+                self._messenger_cards[mid] = (card, txt_frame, ln, lt, dot)
+            else:
+                card, txt, ln, lt, dot = self._messenger_cards[mid]
+                # GRID permite cambiar el row sin pestañear
+                card.grid(row=i, column=0, pady=4, padx=8, sticky="ew")
+                
+                card.configure(fg_color=bg_color_card, border_width=1 if is_sel else 0, border_color=COLORS["accent"] if is_sel else bg_color_card)
+                txt.configure(fg_color=bg_color_card)
+                ln.configure(text=f"👤 {m['nombre']}", fg_color=bg_color_card, font=ctk.CTkFont(size=18, weight="bold" if is_sel else "normal"))
+                lt.configure(text=f"📞 {m['telefono']}", fg_color=bg_color_card)
+                dot.configure(fg_color=color_status)
 
     def _seleccionar_mensajero(self, id_: int, nombre: str, telefono: str):
         # Guardar base actual del mensajero previo antes de cambiar
@@ -522,8 +477,8 @@ class TabGestion(ctk.CTkFrame):
                           icon="warning", option_1="OK")
             return
 
-        cliente_nombre = self.entry_cliente.get().strip()
-        descripcion = self.entry_desc_svc.get().strip()
+        cliente_nombre = ""
+        descripcion = ""
 
         db.crear_servicio(self.mensajero_seleccionado["id"], valor, descripcion, cliente_nombre=cliente_nombre)
         
@@ -542,8 +497,6 @@ class TabGestion(ctk.CTkFrame):
         # Limpiar entradas
         self.entry_valor.delete(0, "end")
         self.entry_valor.insert(0, "5000")
-        self.entry_cliente.delete(0, "end")
-        self.entry_desc_svc.delete(0, "end")
         
         self._cargar_servicios_pendientes()
         self._actualizar_status_visual_mensajero(self.mensajero_seleccionado["id"])
@@ -776,26 +729,6 @@ class TabGestion(ctk.CTkFrame):
 
     # ── Autocomplete Logic ─────────────────────────────────────────────
 
-    # ── Autocomplete Logic ─────────────────────────────────────────────
-
-    def _on_cliente_key_release(self, event=None):
-        """Autocompletado de texto (type-ahead) para la barra superior."""
-        if event and event.keysym in ("BackSpace", "Delete", "Left", "Right", "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Return", "Escape", "Tab"):
-            return
-
-        texto = self.entry_cliente.get()
-        if not texto: return
-
-        sugerencias = db.sugerir_clientes(texto)
-        if sugerencias:
-            sugerencia = sugerencias[0]
-            if sugerencia.lower().startswith(texto.lower()):
-                pos = len(texto)
-                self.entry_cliente.delete(0, "end")
-                self.entry_cliente.insert(0, sugerencia)
-                self.entry_cliente.select_range(pos, "end")
-                self.entry_cliente.icursor(pos)
-
     def _show_suggestions(self, entry):
         """Muestra lista desplegable para la edición inline en la tabla."""
         texto = entry.get().strip()
@@ -847,7 +780,8 @@ class TabGestion(ctk.CTkFrame):
             if entry.winfo_exists():
                 entry.delete(0, tk.END)
                 entry.insert(0, nombre)
-                entry.focus()
+                # Al seleccionar sugerencia, guardamos de una vez
+                self._confirmar_edicion_inline()
             self._cerrar_sugerencias()
 
     def _cerrar_sugerencias(self):
@@ -876,8 +810,8 @@ class TabGestion(ctk.CTkFrame):
         dot.configure(fg_color=color)
 
     def _on_inline_focus_out(self, event):
-        # Delay para permitir selección en la lista de sugerencias antes de cerrar el entry
-        self.after(200, self._cerrar_edicion_inline)
+        # Delay para permitir selección en la lista de sugerencias antes de guardar
+        self.after(200, self._confirmar_edicion_inline)
 
     def _exportar_respaldo_pendientes(self):
         """Exporta todos los servicios pendientes a Excel como respaldo de seguridad."""
