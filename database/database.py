@@ -234,6 +234,37 @@ def init_db():
     except Exception as e:
         print("[Migración Cascade]", e)
 
+    # --- Configuración del sistema ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Configuracion (
+            clave TEXT PRIMARY KEY,
+            valor TEXT
+        );
+    """)
+
+    # Inicializar contraseña por defecto si no existe
+    cursor.execute("SELECT valor FROM Configuracion WHERE clave='password'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO Configuracion (clave, valor) VALUES ('password', 'ya le llego')")
+
+    conn.commit()
+    conn.close()
+
+# ── Password Management ──
+
+def get_app_password() -> str:
+    """Retorna la contraseña actual del sistema."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT valor FROM Configuracion WHERE clave='password'")
+    res = cursor.fetchone()
+    conn.close()
+    return res[0] if res else "ya le llego"
+
+def set_app_password(nueva_pass: str):
+    """Actualiza la contraseña del sistema."""
+    conn = get_connection()
+    conn.execute("UPDATE Configuracion SET valor = ? WHERE clave = 'password'", (nueva_pass,))
     conn.commit()
     conn.close()
 
