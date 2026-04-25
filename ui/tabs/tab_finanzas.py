@@ -408,7 +408,7 @@ class TabFinanzas(ctk.CTkFrame):
         entry_pass.focus_set()
 
         def verificar(event=None):
-            if entry_pass.get() == "ya le llego":
+            if entry_pass.get() == db.get_app_password():
                 modal.destroy()
                 callback()
             else:

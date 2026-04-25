@@ -101,7 +101,7 @@ class TabGestion(ctk.CTkFrame):
             entry.pack(pady=5)
 
             def check():
-                if entry.get() == "ya le llego":
+                if entry.get() == db.get_app_password():
                     dialog.destroy()
                     callback()
                 else:
