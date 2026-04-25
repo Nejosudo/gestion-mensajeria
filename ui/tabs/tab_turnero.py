@@ -161,27 +161,27 @@ class TabTurnero(ctk.CTkFrame):
         for i, t in enumerate(cola):
             mid = t["mensajero_id"]
             is_first = (i == 0)
-            bg_color = "#2c3e50" if is_first else COLORS["bg_input"]
+            bg_color = "#ebf9f1" if is_first else COLORS["bg_input"]
 
             if mid not in self._cola_cards:
                 card_kwargs = {"master": self.scroll_cola, "fg_color": bg_color, "corner_radius": 10, "height": 70}
                 if is_first:
                     card_kwargs["border_width"] = 2
-                    card_kwargs["border_color"] = "#27ae60"
+                    card_kwargs["border_color"] = COLORS["success"]
                 card = ctk.CTkFrame(**card_kwargs)
                 card.grid(row=i, column=0, pady=5, padx=5, sticky="ew")
                 card.grid_propagate(False)
 
-                pos_lbl = ctk.CTkLabel(card, text=str(i + 1), font=ctk.CTkFont(size=20, weight="bold"), text_color="#27ae60" if is_first else COLORS["text_muted"], width=40)
+                pos_lbl = ctk.CTkLabel(card, text=str(i + 1), font=ctk.CTkFont(size=20, weight="bold"), text_color=COLORS["success"] if is_first else COLORS["text_muted"], width=40)
                 pos_lbl.pack(side="left", padx=(10, 5))
 
                 info_frame = ctk.CTkFrame(card, fg_color="transparent")
                 info_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-                lbl_n = ctk.CTkLabel(info_frame, text=t["nombre"], font=ctk.CTkFont(size=15, weight="bold"), text_color="#ffffff" if is_first else COLORS["text"], anchor="w")
+                lbl_n = ctk.CTkLabel(info_frame, text=t["nombre"], font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["text"], anchor="w")
                 lbl_n.pack(fill="x")
 
-                lbl_f = ctk.CTkLabel(info_frame, text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}", font=ctk.CTkFont(size=11), text_color="#bdc3c7" if is_first else COLORS["text_muted"], anchor="w")
+                lbl_f = ctk.CTkLabel(info_frame, text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w")
                 lbl_f.pack(fill="x")
 
                 btns_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -194,12 +194,12 @@ class TabTurnero(ctk.CTkFrame):
                 card.grid(row=i, column=0, pady=5, padx=5, sticky="ew")
                 card.configure(fg_color=bg_color)
                 if is_first:
-                    card.configure(border_width=2, border_color="#27ae60")
+                    card.configure(border_width=2, border_color=COLORS["success"])
                 else:
                     card.configure(border_width=0)
-                pos_lbl.configure(text=str(i + 1), text_color="#27ae60" if is_first else COLORS["text_muted"])
-                lbl_n.configure(text=t["nombre"], text_color="#ffffff" if is_first else COLORS["text"])
-                lbl_f.configure(text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}", text_color="#bdc3c7" if is_first else COLORS["text_muted"])
+                pos_lbl.configure(text=str(i + 1), text_color=COLORS["success"] if is_first else COLORS["text_muted"])
+                lbl_n.configure(text=t["nombre"], text_color=COLORS["text"])
+                lbl_f.configure(text=f"Llegada: {t['fecha_entrada'].split(' ')[1]}", text_color=COLORS["text_muted"])
 
 
     def _registrar_llegada(self, mid):
