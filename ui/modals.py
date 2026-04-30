@@ -215,7 +215,7 @@ class FormularioMensajero(ctk.CTkToplevel):
         self.resizable(False, False)
 
         # Centrado manual robusto
-        ancho, alto = 400, 350
+        ancho, alto = 400, 520
         self.withdraw()
         self.update_idletasks()
         
@@ -255,11 +255,33 @@ class FormularioMensajero(ctk.CTkToplevel):
             form, height=35, fg_color=COLORS["bg_input"],
             validate="key", validatecommand=vcmd
         )
-        self.entry_telefono.pack(fill="x", pady=(2, 20))
+        self.entry_telefono.pack(fill="x", pady=(2, 10))
+
+        ctk.CTkLabel(form, text="Identificativo (Numérico):", text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.entry_id_num = ctk.CTkEntry(
+            form, height=35, fg_color=COLORS["bg_input"],
+            validate="key", validatecommand=vcmd
+        )
+        self.entry_id_num.pack(fill="x", pady=(2, 10))
+
+        ctk.CTkLabel(form, text="Estado:", text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.combo_estado = ctk.CTkComboBox(
+            form, values=["Trabajando", "Descanso"], height=35, fg_color=COLORS["bg_input"]
+        )
+        self.combo_estado.pack(fill="x", pady=(2, 10))
+        self.combo_estado.set("Trabajando")
+
+        ctk.CTkLabel(form, text="Días de descanso (ej: Lunes, Martes):", text_color=COLORS["text_muted"]).pack(anchor="w")
+        self.entry_dias_descanso = ctk.CTkEntry(form, height=35, fg_color=COLORS["bg_input"])
+        self.entry_dias_descanso.pack(fill="x", pady=(2, 20))
 
         if mensajero:
             self.entry_nombre.insert(0, mensajero["nombre"])
             self.entry_telefono.insert(0, mensajero["telefono"])
+            self.entry_id_num.insert(0, str(mensajero.get("identificativo") or ""))
+            estado_db = mensajero.get("estado_trabajo") or "trabajando"
+            self.combo_estado.set("Trabajando" if estado_db.lower() == "trabajando" else "Descanso")
+            self.entry_dias_descanso.insert(0, mensajero.get("dias_descanso") or "")
 
         self.btn_guardar = ctk.CTkButton(
             self, text="💾 Guardar Cambios" if mensajero else "➕ Registrar Mensajero",
@@ -279,10 +301,21 @@ class FormularioMensajero(ctk.CTkToplevel):
             return
         nombre = self.entry_nombre.get().strip()
         telefono = self.entry_telefono.get().strip()
-        if not nombre or not telefono:
-            CTkMessagebox(title="Error", message="Completa todos los campos.", icon="warning")
+        identificativo_str = self.entry_id_num.get().strip()
+        estado = self.combo_estado.get().lower()
+        dias_descanso = self.entry_dias_descanso.get().strip()
+
+        if not nombre or not telefono or not identificativo_str:
+            CTkMessagebox(title="Error", message="Nombre, teléfono e identificativo son obligatorios.", icon="warning")
             return
-        self.callback(nombre, telefono, self.mensajero["id"] if self.mensajero else None)
+            
+        try:
+            identificativo = int(identificativo_str)
+        except ValueError:
+            CTkMessagebox(title="Error", message="El identificativo debe ser un número entero.", icon="warning")
+            return
+
+        self.callback(nombre, telefono, identificativo, estado, dias_descanso, self.mensajero["id"] if self.mensajero else None)
         self.destroy()
 
 

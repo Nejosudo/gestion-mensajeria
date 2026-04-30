@@ -205,6 +205,24 @@ class TabClientes(ctk.CTkFrame):
         )
         self.scroll_seleccion.pack(fill="both", expand=True, padx=10, pady=5)
 
+        # Botones de Acción Panel Derecho
+        self.acciones_derecha = ctk.CTkFrame(self.derecha_panel, fg_color="transparent")
+        self.acciones_derecha.pack(fill="x", padx=10, pady=5)
+        
+        self.btn_guardar_grupo = ctk.CTkButton(
+            self.acciones_derecha, text="📁 Crear Grupo", width=120,
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
+            command=self._crear_grupo_de_seleccion
+        )
+        self.btn_guardar_grupo.pack(side="left", padx=2, fill="x", expand=True)
+
+        self.btn_ver_grupos = ctk.CTkButton(
+            self.acciones_derecha, text="📂 Ver Grupos", width=120,
+            fg_color=COLORS["text_muted"], hover_color=COLORS["text"],
+            command=self._mostrar_modal_grupos
+        )
+        self.btn_ver_grupos.pack(side="left", padx=2, fill="x", expand=True)
+
         # Footer del panel derecho
         self.footer_derecha = ctk.CTkFrame(self.derecha_panel, fg_color="transparent", height=100)
         self.footer_derecha.pack(fill="x", side="bottom", padx=10, pady=10)
@@ -429,6 +447,163 @@ class TabClientes(ctk.CTkFrame):
             return
         
         nombre = self.tree.item(sel[0], "values")[1]
+        
+        # Pedir contraseña operativa
+        dialog = ctk.CTkInputDialog(text="Ingrese la contraseña operativa para continuar:", title="Seguridad")
+        password = dialog.get_input()
+        if password != db.get_app_password("operativa"):
+            CTkMessagebox(title="Error", message="Contraseña operativa incorrecta.", icon="cancel")
+            return
+
         if CTkMessagebox(title="Confirmar", message=f"¿Eliminar al cliente {nombre}?", icon="question", option_1="No", option_2="Sí").get() == "Sí":
             db.eliminar_cliente(int(sel[0]))
             self.reload_data()
+
+    # --- Grupos de Clientes ---
+    def _crear_grupo_de_seleccion(self):
+        if not self.seleccionados:
+            CTkMessagebox(title="Aviso", message="No hay clientes seleccionados para agrupar.", icon="warning")
+            return
+            
+        dialog = ctk.CTkInputDialog(text="Ingrese un nombre para el nuevo grupo:", title="Crear Grupo")
+        nombre = dialog.get_input()
+        
+        if not nombre: return
+        
+        grupo_id = db.crear_grupo_clientes(nombre)
+        if grupo_id == 0:
+            CTkMessagebox(title="Error", message="Ya existe un grupo con ese nombre o hubo un error.", icon="cancel")
+            return
+            
+        for cid in self.seleccionados.keys():
+            db.agregar_cliente_a_grupo(grupo_id, cid)
+            
+        CTkMessagebox(title="Éxito", message=f"Grupo '{nombre}' creado con éxito.", icon="check")
+
+    def _mostrar_modal_grupos(self):
+        modal = ctk.CTkToplevel(self)
+        modal.title("Gestión de Grupos")
+        modal.geometry("500x500")
+        modal.resizable(False, False)
+        
+        # Centrar
+        x = self.winfo_x() + (self.winfo_width() // 2) - 250
+        y = self.winfo_y() + (self.winfo_height() // 2) - 250
+        modal.geometry(f"+{x}+{y}")
+        
+        modal.after(10, modal.focus_force)
+        modal.after(100, modal.grab_set)
+        
+        ctk.CTkLabel(modal, text="📂 Grupos de Clientes", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=10)
+        
+        frame_listas = ctk.CTkFrame(modal, fg_color="transparent")
+        frame_listas.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Lista de Grupos
+        frame_grupos = ctk.CTkFrame(frame_listas)
+        frame_grupos.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        ctk.CTkLabel(frame_grupos, text="Grupos", font=ctk.CTkFont(weight="bold")).pack(pady=5)
+        
+        listbox_grupos = tk.Listbox(frame_grupos, bg=COLORS["bg_input"], fg=COLORS["text"], font=("Arial", 11), selectbackground=COLORS["accent"])
+        listbox_grupos.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Lista de Clientes en Grupo
+        frame_clientes = ctk.CTkFrame(frame_listas)
+        frame_clientes.pack(side="right", fill="both", expand=True, padx=(5, 0))
+        ctk.CTkLabel(frame_clientes, text="Clientes en el Grupo", font=ctk.CTkFont(weight="bold")).pack(pady=5)
+        
+        listbox_clientes = tk.Listbox(frame_clientes, bg=COLORS["bg_input"], fg=COLORS["text"], font=("Arial", 11), selectbackground=COLORS["accent"])
+        listbox_clientes.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Total Servicios del Grupo
+        lbl_total_grupo = ctk.CTkLabel(frame_clientes, text="Total servicios: 0", font=ctk.CTkFont(weight="bold", size=13), text_color=COLORS["success"])
+        lbl_total_grupo.pack(pady=5)
+
+        grupos_data = []
+        clientes_data = []
+        
+        def cargar_grupos():
+            listbox_grupos.delete(0, tk.END)
+            nonlocal grupos_data
+            grupos_data = db.obtener_grupos_clientes()
+            for g in grupos_data:
+                listbox_grupos.insert(tk.END, g["nombre"])
+                
+        def on_grupo_select(event):
+            sel = listbox_grupos.curselection()
+            if not sel: return
+            idx = sel[0]
+            grupo = grupos_data[idx]
+            cargar_clientes_grupo(grupo["id"])
+            
+        def cargar_clientes_grupo(grupo_id):
+            listbox_clientes.delete(0, tk.END)
+            nonlocal clientes_data
+            clientes_data = db.obtener_clientes_por_grupo(grupo_id)
+            total = 0
+            for c in clientes_data:
+                listbox_clientes.insert(tk.END, c["nombre"])
+                total += c.get("total_servicios", 0)
+            lbl_total_grupo.configure(text=f"Total servicios: {total}")
+            
+        listbox_grupos.bind("<<ListboxSelect>>", on_grupo_select)
+        cargar_grupos()
+        
+        # Botones de Acción para Grupo
+        frame_acciones_grupo = ctk.CTkFrame(frame_grupos, fg_color="transparent")
+        frame_acciones_grupo.pack(fill="x", padx=5, pady=5)
+        
+        def eliminar_grupo():
+            sel = listbox_grupos.curselection()
+            if not sel: return
+            idx = sel[0]
+            grupo = grupos_data[idx]
+            if CTkMessagebox(title="Confirmar", message=f"¿Eliminar el grupo {grupo['nombre']}?", icon="question", option_1="No", option_2="Sí").get() == "Sí":
+                db.eliminar_grupo_clientes(grupo["id"])
+                cargar_grupos()
+                listbox_clientes.delete(0, tk.END)
+                lbl_total_grupo.configure(text="Total servicios: 0")
+                
+        def cargar_en_panel():
+            sel = listbox_grupos.curselection()
+            if not sel: return
+            idx = sel[0]
+            grupo = grupos_data[idx]
+            cls = db.obtener_clientes_por_grupo(grupo["id"])
+            self.seleccionados.clear()
+            for c in cls:
+                self.seleccionados[c["id"]] = {"nombre": c["nombre"], "servicios": c.get("total_servicios", 0)}
+            self._update_panel_derecho()
+            modal.destroy()
+                
+        ctk.CTkButton(frame_acciones_grupo, text="🗑️", width=30, fg_color=COLORS["danger"], command=eliminar_grupo).pack(side="left", padx=2)
+        ctk.CTkButton(frame_acciones_grupo, text="Cargar en Selección", command=cargar_en_panel).pack(side="right", padx=2, fill="x", expand=True)
+
+        # Botones de Acción para Cliente
+        frame_acciones_cliente = ctk.CTkFrame(frame_clientes, fg_color="transparent")
+        frame_acciones_cliente.pack(fill="x", padx=5, pady=5)
+        
+        def quitar_cliente():
+            sel_g = listbox_grupos.curselection()
+            sel_c = listbox_clientes.curselection()
+            if not sel_g or not sel_c: return
+            grupo_id = grupos_data[sel_g[0]]["id"]
+            cliente_id = clientes_data[sel_c[0]]["id"]
+            db.remover_cliente_de_grupo(grupo_id, cliente_id)
+            cargar_clientes_grupo(grupo_id)
+            
+        def agregar_seleccion_a_grupo():
+            sel_g = listbox_grupos.curselection()
+            if not sel_g: return
+            if not self.seleccionados:
+                CTkMessagebox(title="Aviso", message="No hay clientes seleccionados en el panel principal.", icon="warning")
+                return
+            grupo_id = grupos_data[sel_g[0]]["id"]
+            for cid in self.seleccionados.keys():
+                db.agregar_cliente_a_grupo(grupo_id, cid)
+            cargar_clientes_grupo(grupo_id)
+            CTkMessagebox(title="Éxito", message="Clientes añadidos al grupo.", icon="check")
+
+        ctk.CTkButton(frame_acciones_cliente, text="Quitar del Grupo", fg_color=COLORS["warning"], text_color="white", command=quitar_cliente).pack(side="left", padx=2, fill="x", expand=True)
+        ctk.CTkButton(frame_acciones_cliente, text="➕ Selección Actual", command=agregar_seleccion_a_grupo).pack(side="right", padx=2, fill="x", expand=True)
+

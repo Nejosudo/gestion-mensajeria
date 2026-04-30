@@ -227,8 +227,8 @@ class TabFacturas(ctk.CTkFrame):
     def _mostrar_tarjeta_liquidacion(self, datos, servicios, parent=None):
         if parent is None:
             parent = self
-        ancho = 420
-        alto = 600
+        ancho = 480
+        alto = 680
         ventana = ctk.CTkToplevel(parent)
         ventana.title(f"Liquidación #{datos['ID']}")
         ventana.configure(fg_color=COLORS["bg_card"])
@@ -315,17 +315,27 @@ class TabFacturas(ctk.CTkFrame):
         # Separador para los servicios si existen
         if servicios:
             ctk.CTkLabel(main_frame, text="Detalle de servicios:", font=ctk.CTkFont(size=14, weight="bold"), text_color=COLORS["accent"]).pack(anchor="w", pady=(5, 5))
-            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8, height=150)
-            svc_frame.pack(fill="x", pady=(0, 10))
+            svc_frame = ctk.CTkScrollableFrame(main_frame, fg_color=COLORS["bg_input"], corner_radius=8)
+            svc_frame.pack(fill="both", expand=True, pady=(0, 10))
             for s in servicios:
                 desc = s.get("descripcion", "") or ""
+                cliente = s.get("cliente_nombre", "") or ""
+                
                 texto_principal = f"🚴 ID: {s['id']}  |  💰 {fmt_moneda(s['valor'])}"
+                
+                desc_list = []
+                if cliente: desc_list.append(f"🏢 {cliente}")
+                if desc: desc_list.append(f"📝 {desc}")
+                desc_text = "  |  ".join(desc_list)
+                
                 fila = ctk.CTkFrame(svc_frame, fg_color="transparent")
-                fila.pack(fill="x", padx=4, pady=2)
-                ctk.CTkLabel(fila, text=texto_principal, font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["text"], anchor="w").pack(anchor="w")
-                if desc:
-                    ctk.CTkLabel(fila, text=f"   📝 {desc}", font=ctk.CTkFont(size=10), text_color=COLORS["text_muted"], anchor="w").pack(anchor="w")
-                ctk.CTkFrame(svc_frame, height=1, fg_color=COLORS["border"]).pack(fill="x", padx=4)
+                fila.pack(fill="x", padx=4, pady=4)
+                
+                ctk.CTkLabel(fila, text=texto_principal, font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"], anchor="w").pack(anchor="w")
+                if desc_text:
+                    ctk.CTkLabel(fila, text=desc_text, font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"], anchor="w", justify="left", wraplength=400).pack(anchor="w")
+                    
+                ctk.CTkFrame(svc_frame, height=1, fg_color=COLORS["border"]).pack(fill="x", padx=4, pady=(4, 0))
         else:
             ctk.CTkLabel(main_frame, text="No se encontraron servicios asociados.", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(anchor="w", pady=2)
 
@@ -647,7 +657,7 @@ class TabFacturas(ctk.CTkFrame):
         entry_pass.focus_set()
 
         def verificar(event=None):
-            if entry_pass.get() == db.get_app_password():
+            if entry_pass.get() == db.get_app_password("operativa"):
                 modal.destroy()
                 callback()
             else:

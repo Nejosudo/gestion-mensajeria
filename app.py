@@ -52,7 +52,7 @@ class App(ctk.CTk):
         entry_pass.pack(pady=5)
 
         def check_pass():
-            if entry_pass.get() == db.get_app_password():
+            if entry_pass.get() == db.get_app_password("login"):
                 login.destroy()
                 self._iniciar_app()
             else:
@@ -134,14 +134,6 @@ class App(ctk.CTk):
         )
         self.btn_config.pack(side="right", padx=5)
         
-        self.btn_ver_turnero = ctk.CTkButton(
-            header, text="🔄 Ver Turnero", width=120, height=32,
-            fg_color="#27ae60", hover_color="#2ecc71",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=self._toggle_turnero
-        )
-        self.btn_ver_turnero.pack(side="right", padx=10)
-
 
         # self._update_clock()
 
@@ -171,7 +163,6 @@ class App(ctk.CTk):
         self.tab_facturas = TabFacturas(tab3)
         self.tab_finanzas = TabFinanzas(tab4)
         
-        self.v_turnero = None # Para controlar una sola instancia de la ventana
 
         # Forzar color negro en el texto de las pestañas
         try:
@@ -197,14 +188,6 @@ class App(ctk.CTk):
         elif "Facturas" in tab and hasattr(self, 'tab_facturas'):
             self.tab_facturas.reload_data()
 
-    def _toggle_turnero(self):
-        """Abre el turnero en una ventana independiente."""
-        if self.v_turnero is None or not self.v_turnero.winfo_exists():
-            self.v_turnero = VentanaTurnero(self)
-        else:
-            self.v_turnero.focus()
-            self.v_turnero.tab_turnero.reload_data()
-
     def refresh_facturas(self):
         """Llamado desde tab_gestion cuando se ejecuta una liquidación."""
         if hasattr(self, 'tab_facturas'):
@@ -218,96 +201,141 @@ class App(ctk.CTk):
             self.tab_gestion._cargar_mensajeros()
 
     def _abrir_configuracion(self):
-        """Abre ventana de configuración para cambio de contraseña."""
+        """Abre ventana de configuración para cambio de contraseña y porcentaje."""
         modal = ctk.CTkToplevel(self)
         modal.title("Configuración")
-        modal.geometry("400x480")
+        modal.geometry("420x550")
         modal.resizable(False, False)
         
         # Centrar relativo a la principal
-        x = self.winfo_x() + (self.winfo_width() // 2) - 200
-        y = self.winfo_y() + (self.winfo_height() // 2) - 240
-        modal.geometry(f"400x480+{x}+{y}")
+        x = self.winfo_x() + (self.winfo_width() // 2) - 210
+        y = self.winfo_y() + (self.winfo_height() // 2) - 275
+        modal.geometry(f"420x550+{x}+{y}")
 
         # Asegurar que sea visible antes del grab_set
         modal.after(10, modal.focus_force)
         modal.after(100, modal.grab_set)
 
-
-        ctk.CTkLabel(modal, text="⚙️ Configuración de Seguridad", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
+        ctk.CTkLabel(modal, text="⚙️ Configuración de Seguridad", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(20, 10))
 
         # Frame contenedor
         container = ctk.CTkFrame(modal, fg_color="transparent")
         container.pack(pady=10, padx=40, fill="both")
 
-        ctk.CTkLabel(container, text="Contraseña Actual:", anchor="w").pack(fill="x")
-        curr_pass = ctk.CTkEntry(container, show="*", placeholder_text="Mantenla segura...")
-        curr_pass.pack(fill="x", pady=(0, 10))
+        # --- SECCIÓN: CONTRASEÑA LOGIN ---
+        group_login = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], border_width=1, border_color=COLORS["border"])
+        group_login.pack(fill="x", pady=(0, 15), ipady=10)
+        ctk.CTkLabel(group_login, text="🔑 Cambiar Contraseña de Inicio", font=ctk.CTkFont(weight="bold")).pack(pady=5)
+        
+        f_login = ctk.CTkFrame(group_login, fg_color="transparent")
+        f_login.pack(fill="x", padx=20)
+        
+        old_login = ctk.CTkEntry(f_login, show="*", placeholder_text="Contraseña Actual", height=32)
+        old_login.pack(fill="x", pady=2)
+        new_login = ctk.CTkEntry(f_login, show="*", placeholder_text="Nueva Contraseña", height=32)
+        new_login.pack(fill="x", pady=2)
+        conf_login = ctk.CTkEntry(f_login, show="*", placeholder_text="Confirmar Nueva", height=32)
+        conf_login.pack(fill="x", pady=2)
 
-        ctk.CTkLabel(container, text="Nueva Contraseña:", anchor="w").pack(fill="x")
-        new_pass = ctk.CTkEntry(container, show="*", placeholder_text="Mínimo 4 caracteres")
-        new_pass.pack(fill="x", pady=(0, 10))
-
-        ctk.CTkLabel(container, text="Confirmar Nueva Contraseña:", anchor="w").pack(fill="x")
-        conf_pass = ctk.CTkEntry(container, show="*", placeholder_text="Repite la nueva")
-        conf_pass.pack(fill="x", pady=(0, 10))
-
-        # Porcentaje de ganancia empresa
-        try:
-            porcentaje_debug = db.get_porcentaje_empresa()
-            print("DEBUG: get_porcentaje_empresa =", porcentaje_debug)
-        except Exception as e:
-            print("DEBUG: ERROR get_porcentaje_empresa", e)
-            porcentaje_debug = 20
-        frame_porcentaje = ctk.CTkFrame(container, fg_color="transparent")
-        frame_porcentaje.pack(fill="x", pady=(10, 0))
-        ctk.CTkLabel(frame_porcentaje, text="% Ganancia Empresa por Domicilio:", anchor="w", width=220).pack(side="left", padx=(0, 10))
-        entry_porcentaje = ctk.CTkEntry(frame_porcentaje, placeholder_text="Ej: 20", width=60, justify="center")
-        entry_porcentaje.pack(side="left")
-        entry_porcentaje.insert(0, str(int(porcentaje_debug)))
-
-        def guardar():
-            actual = curr_pass.get()
-            nueva = new_pass.get()
-            confirm = conf_pass.get()
-
-            # Validar y guardar contraseña
-            if actual != db.get_app_password():
-                CTkMessagebox(title="Error", message="La contraseña actual es incorrecta.", icon="cancel")
+        def guardar_login():
+            actual = old_login.get()
+            nueva = new_login.get()
+            confirm = conf_login.get()
+            if not actual or not nueva:
+                CTkMessagebox(title="Aviso", message="Completa los campos de contraseña login.", icon="warning")
                 return
-            if nueva:
-                if len(nueva) < 4:
-                    CTkMessagebox(title="Error", message="La nueva contraseña debe tener al menos 4 caracteres.", icon="warning")
-                    return
-                if nueva != confirm:
-                    CTkMessagebox(title="Error", message="Las nuevas contraseñas no coinciden.", icon="warning")
-                    return
-                db.set_app_password(nueva)
+            if actual != db.get_app_password("login"):
+                CTkMessagebox(title="Error", message="Contraseña actual de inicio incorrecta.", icon="cancel")
+                return
+            if len(nueva) < 4:
+                CTkMessagebox(title="Error", message="Mínimo 4 caracteres.", icon="warning")
+                return
+            if nueva != confirm:
+                CTkMessagebox(title="Error", message="Las contraseñas no coinciden.", icon="warning")
+                return
+            db.set_app_password(nueva, "login")
+            CTkMessagebox(title="Éxito", message="Contraseña de inicio actualizada.", icon="check")
+            old_login.delete(0, "end"); new_login.delete(0, "end"); conf_login.delete(0, "end")
 
-            # Validar y guardar porcentaje
+        ctk.CTkButton(group_login, text="Actualizar Login", height=30, fg_color=COLORS["accent"], command=guardar_login).pack(pady=10)
+
+        # --- SECCIÓN: CONTRASEÑA OPERATIVA ---
+        group_op = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], border_width=1, border_color=COLORS["border"])
+        group_op.pack(fill="x", pady=(0, 15), ipady=10)
+        ctk.CTkLabel(group_op, text="🛡️ Cambiar Contraseña Operativa", font=ctk.CTkFont(weight="bold")).pack(pady=5)
+        
+        f_op = ctk.CTkFrame(group_op, fg_color="transparent")
+        f_op.pack(fill="x", padx=20)
+        
+        old_op = ctk.CTkEntry(f_op, show="*", placeholder_text="Contraseña Operativa Actual", height=32)
+        old_op.pack(fill="x", pady=2)
+        new_op = ctk.CTkEntry(f_op, show="*", placeholder_text="Nueva Contraseña Operativa", height=32)
+        new_op.pack(fill="x", pady=2)
+        conf_op = ctk.CTkEntry(f_op, show="*", placeholder_text="Confirmar Nueva", height=32)
+        conf_op.pack(fill="x", pady=2)
+
+        def guardar_op():
+            actual = old_op.get()
+            nueva = new_op.get()
+            confirm = conf_op.get()
+            if not actual or not nueva:
+                CTkMessagebox(title="Aviso", message="Completa los campos de contraseña operativa.", icon="warning")
+                return
+            if actual != db.get_app_password("operativa"):
+                CTkMessagebox(title="Error", message="Contraseña operativa actual incorrecta.", icon="cancel")
+                return
+            if len(nueva) < 4:
+                CTkMessagebox(title="Error", message="Mínimo 4 caracteres.", icon="warning")
+                return
+            if nueva != confirm:
+                CTkMessagebox(title="Error", message="Las contraseñas no coinciden.", icon="warning")
+                return
+            db.set_app_password(nueva, "operativa")
+            CTkMessagebox(title="Éxito", message="Contraseña operativa actualizada.", icon="check")
+            old_op.delete(0, "end"); new_op.delete(0, "end"); conf_op.delete(0, "end")
+
+        ctk.CTkButton(group_op, text="Actualizar Operativa", height=30, fg_color=COLORS["danger"], command=guardar_op).pack(pady=10)
+
+        # --- SECCIÓN: PORCENTAJE EMPRESA ---
+        group_pct = ctk.CTkFrame(container, fg_color=COLORS["bg_card"], border_width=1, border_color=COLORS["border"])
+        group_pct.pack(fill="x", pady=(0, 15), ipady=10)
+        ctk.CTkLabel(group_pct, text="📈 Porcentaje de Ganancia", font=ctk.CTkFont(weight="bold")).pack(pady=5)
+        
+        f_pct = ctk.CTkFrame(group_pct, fg_color="transparent")
+        f_pct.pack(fill="x", padx=20)
+        
+        try: pct_val = db.get_porcentaje_empresa()
+        except: pct_val = 20
+        
+        ctk.CTkLabel(f_pct, text="Nuevo Porcentaje (%):", anchor="w").pack(fill="x")
+        ent_pct = ctk.CTkEntry(f_pct, height=32)
+        ent_pct.pack(fill="x", pady=2)
+        ent_pct.insert(0, str(int(pct_val)))
+        
+        ctk.CTkLabel(f_pct, text="Autorizar con Pass Operativa:", anchor="w", text_color=COLORS["danger"]).pack(fill="x")
+        pass_auth = ctk.CTkEntry(f_pct, show="*", placeholder_text="Pass Operativa", height=32)
+        pass_auth.pack(fill="x", pady=2)
+
+        def guardar_pct():
+            auth = pass_auth.get()
+            if auth != db.get_app_password("operativa"):
+                CTkMessagebox(title="Error", message="Contraseña operativa incorrecta.", icon="cancel")
+                return
             try:
-                porc = float(entry_porcentaje.get())
-                if porc < 0 or porc > 100:
-                    raise ValueError
-                db.set_porcentaje_empresa(porc)
-            except Exception:
-                CTkMessagebox(title="Error", message="Porcentaje inválido. Debe ser un número entre 0 y 100.", icon="warning")
-                return
+                val = float(ent_pct.get())
+                if 0 <= val <= 100:
+                    db.set_porcentaje_empresa(val)
+                    CTkMessagebox(title="Éxito", message="Porcentaje actualizado.", icon="check")
+                    pass_auth.delete(0, "end")
+                else: raise ValueError
+            except:
+                CTkMessagebox(title="Error", message="Ingresa un número entre 0 y 100.", icon="warning")
 
-            modal.destroy()
-            CTkMessagebox(title="Éxito", message="Configuración actualizada correctamente.", icon="check")
+        ctk.CTkButton(group_pct, text="Guardar Porcentaje", height=30, fg_color=COLORS["success"], command=guardar_pct).pack(pady=10)
 
-        frame_botones = ctk.CTkFrame(modal, fg_color="transparent")
-        frame_botones.pack(pady=(10, 20))
+        ctk.CTkButton(modal, text="Cerrar Configuración", fg_color="gray", command=modal.destroy, width=150).pack(pady=10)
 
-        btn_aceptar = ctk.CTkButton(frame_botones, text="Aceptar", fg_color=COLORS["accent"], command=guardar, width=120, height=38)
-        btn_aceptar.pack(side="left", padx=(0, 10))
-
-        def cancelar():
-            modal.destroy()
-
-        btn_cancelar = ctk.CTkButton(frame_botones, text="Cancelar", fg_color=COLORS["border"], text_color=COLORS["text"], command=cancelar, width=120, height=38)
-        btn_cancelar.pack(side="left")
+        # El botón de cerrar ya está arriba.
 
     def refresh_clientes(self):
         """Llamado desde tab_gestion cuando se asigna un cliente."""

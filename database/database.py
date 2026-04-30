@@ -153,9 +153,15 @@ def init_db():
         cols = [c[1] for c in cursor.fetchall()]
         if "base_actual" not in cols:
             cursor.execute("ALTER TABLE Mensajeros ADD COLUMN base_actual REAL DEFAULT 0;")
-            conn.commit()
-    except Exception:
-        pass
+        if "identificativo" not in cols:
+            cursor.execute("ALTER TABLE Mensajeros ADD COLUMN identificativo INTEGER;")
+        if "estado_trabajo" not in cols:
+            cursor.execute("ALTER TABLE Mensajeros ADD COLUMN estado_trabajo TEXT DEFAULT 'trabajando';")
+        if "dias_descanso" not in cols:
+            cursor.execute("ALTER TABLE Mensajeros ADD COLUMN dias_descanso TEXT DEFAULT '';")
+        conn.commit()
+    except Exception as e:
+        print("[Migración Mensajeros Cols]", e)
 
     # --- Migración: Si la tabla Servicios tiene columna 'estado' y no tiene 'descripcion', migrar datos ---
     try:
@@ -263,39 +269,69 @@ def init_db():
         );
     """)
 
-    # Inicializar contraseña por defecto si no existe
+    # Inicializar contraseñas por defecto si no existen
     cursor.execute("SELECT valor FROM Configuracion WHERE clave='password'")
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO Configuracion (clave, valor) VALUES ('password', 'ya le llego')")
+    old_pass = cursor.fetchone()
+    if old_pass:
+        cursor.execute("INSERT OR REPLACE INTO Configuracion (clave, valor) VALUES ('password_login', ?)", (old_pass[0],))
+        cursor.execute("INSERT OR REPLACE INTO Configuracion (clave, valor) VALUES ('password_operativa', ?)", (old_pass[0],))
+        cursor.execute("DELETE FROM Configuracion WHERE clave='password'")
+    else:
+        cursor.execute("SELECT valor FROM Configuracion WHERE clave='password_login'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO Configuracion (clave, valor) VALUES ('password_login', 'ya le llego')")
+        cursor.execute("SELECT valor FROM Configuracion WHERE clave='password_operativa'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO Configuracion (clave, valor) VALUES ('password_operativa', 'ya le llego')")
+
+    # --- Grupos de Clientes ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS GruposClientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS GrupoClienteRel (
+            grupo_id INTEGER,
+            cliente_id INTEGER,
+            PRIMARY KEY (grupo_id, cliente_id),
+            FOREIGN KEY (grupo_id) REFERENCES GruposClientes(id) ON DELETE CASCADE,
+            FOREIGN KEY (cliente_id) REFERENCES Clientes(id) ON DELETE CASCADE
+        );
+    """)
 
     conn.commit()
     conn.close()
 
 # ── Password Management ──
 
-def get_app_password() -> str:
-    """Retorna la contraseña actual del sistema."""
+def get_app_password(tipo: str = "login") -> str:
+    """Retorna la contraseña solicitada (login u operativa)."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT valor FROM Configuracion WHERE clave='password'")
+    clave = "password_login" if tipo == "login" else "password_operativa"
+    cursor.execute("SELECT valor FROM Configuracion WHERE clave=?", (clave,))
     res = cursor.fetchone()
     conn.close()
     return res[0] if res else "ya le llego"
 
-def set_app_password(nueva_pass: str):
-    """Actualiza la contraseña del sistema."""
+def set_app_password(nueva_pass: str, tipo: str = "login"):
+    """Actualiza la contraseña especificada."""
     conn = get_connection()
-    conn.execute("UPDATE Configuracion SET valor = ? WHERE clave = 'password'", (nueva_pass,))
+    clave = "password_login" if tipo == "login" else "password_operativa"
+    conn.execute("UPDATE Configuracion SET valor = ? WHERE clave = ?", (nueva_pass, clave))
     conn.commit()
     conn.close()
 
 
 # ── CRUD Mensajeros ─────────────────────────────────────────────────
 
-def crear_mensajero(nombre: str, telefono: str) -> int:
+def crear_mensajero(nombre: str, telefono: str, identificativo: int, estado_trabajo: str = 'trabajando', dias_descanso: str = '') -> int:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO Mensajeros (nombre, telefono) VALUES (?, ?)", (nombre, telefono))
+    cursor.execute("INSERT INTO Mensajeros (nombre, telefono, identificativo, estado_trabajo, dias_descanso) VALUES (?, ?, ?, ?, ?)", 
+                   (nombre, telefono, identificativo, estado_trabajo, dias_descanso))
     conn.commit()
     nuevo_id = cursor.lastrowid
     conn.close()
@@ -320,9 +356,10 @@ def obtener_mensajeros(busqueda: str = "") -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def actualizar_mensajero(id_: int, nombre: str, telefono: str):
+def actualizar_mensajero(id_: int, nombre: str, telefono: str, identificativo: int, estado_trabajo: str = 'trabajando', dias_descanso: str = ''):
     conn = get_connection()
-    conn.execute("UPDATE Mensajeros SET nombre=?, telefono=? WHERE id=?", (nombre, telefono, id_))
+    conn.execute("UPDATE Mensajeros SET nombre=?, telefono=?, identificativo=?, estado_trabajo=?, dias_descanso=? WHERE id=?", 
+                 (nombre, telefono, identificativo, estado_trabajo, dias_descanso, id_))
     conn.commit()
     conn.close()
 
@@ -775,3 +812,59 @@ def limpiar_turnero():
     conn.execute("DELETE FROM Turnero")
     conn.commit()
     conn.close()
+
+# ── Grupos de Clientes ─────────────────────────────────────────────────────────
+
+def crear_grupo_clientes(nombre: str) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO GruposClientes (nombre) VALUES (?)", (nombre,))
+        conn.commit()
+        nuevo_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        nuevo_id = 0
+    conn.close()
+    return nuevo_id if nuevo_id is not None else 0
+
+def obtener_grupos_clientes() -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM GruposClientes ORDER BY nombre").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def eliminar_grupo_clientes(grupo_id: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM GruposClientes WHERE id=?", (grupo_id,))
+    conn.commit()
+    conn.close()
+
+def agregar_cliente_a_grupo(grupo_id: int, cliente_id: int):
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO GrupoClienteRel (grupo_id, cliente_id) VALUES (?, ?)", (grupo_id, cliente_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass
+    conn.close()
+
+def remover_cliente_de_grupo(grupo_id: int, cliente_id: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM GrupoClienteRel WHERE grupo_id=? AND cliente_id=?", (grupo_id, cliente_id))
+    conn.commit()
+    conn.close()
+
+def obtener_clientes_por_grupo(grupo_id: int) -> list[dict]:
+    conn = get_connection()
+    query = """
+        SELECT C.*, 
+               (SELECT COUNT(*) FROM Servicios WHERE (cliente_id = C.id OR cliente_nombre = C.nombre)) as total_servicios,
+               (SELECT MAX(fecha) FROM Servicios WHERE (cliente_id = C.id OR cliente_nombre = C.nombre)) as ultima_fecha
+        FROM Clientes C
+        JOIN GrupoClienteRel GCR ON C.id = GCR.cliente_id
+        WHERE GCR.grupo_id = ?
+        ORDER BY C.nombre
+    """
+    rows = conn.execute(query, (grupo_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

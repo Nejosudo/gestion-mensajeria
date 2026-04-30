@@ -16,13 +16,7 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
     Retorna la ruta del archivo generado.
     """
     if not ruta_destino:
-        escritorio = os.path.join(os.path.expanduser("~"), "Escritorio")
-        if not os.path.exists(escritorio):
-            escritorio = os.path.join(os.path.expanduser("~"), "Desktop")
-        if not os.path.exists(escritorio):
-            escritorio = os.path.expanduser("~")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        ruta_destino = os.path.join(escritorio, f"Liquidaciones_{timestamp}.xlsx")
+        raise ValueError("Se debe proporcionar una ruta destino para exportar el reporte.")
 
     wb = Workbook()
     ws = wb.active
@@ -45,7 +39,7 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
     # ── Título del reporte ──
     ws.merge_cells("A1:L1")
     titulo_cell = ws["A1"]
-    titulo_cell.value = "REPORTE DE LIQUIDACIONES — MENSAJERÍA"
+    titulo_cell.value = "REPORTE DE LIQUIDACIONES — SOFTWARE MensajeriaV1"
     titulo_cell.font = Font(name="Calibri", bold=True, size=14, color="1a1a2e")
     titulo_cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
@@ -73,7 +67,15 @@ def exportar_liquidaciones(datos: list[dict], ruta_destino: str | None = None) -
         aseo = liq.get("descuento_aseo", 0)
         ganancia_empresa = comision + aseo
         servicios_liq = db.obtener_servicios_por_liquidacion(liq["id"])
-        descripciones = ", ".join([s.get("descripcion", "") for s in servicios_liq if s.get("descripcion")])
+        desc_list = []
+        for s in servicios_liq:
+            cliente = s.get("cliente_nombre") or ""
+            desc = s.get("descripcion") or ""
+            if cliente and desc:
+                desc_list.append(f"{cliente}: {desc}")
+            elif cliente or desc:
+                desc_list.append(cliente or desc)
+        descripciones = " | ".join(desc_list)
 
         valores = [
             liq.get("id", ""),
@@ -133,13 +135,7 @@ def exportar_servicios_pendientes(ruta_destino: str | None = None) -> str:
     from database import database as db
 
     if not ruta_destino:
-        escritorio = os.path.join(os.path.expanduser("~"), "Escritorio")
-        if not os.path.exists(escritorio):
-            escritorio = os.path.join(os.path.expanduser("~"), "Desktop")
-        if not os.path.exists(escritorio):
-            escritorio = os.path.expanduser("~")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        ruta_destino = os.path.join(escritorio, f"Respaldo_Servicios_Pendientes_{timestamp}.xlsx")
+        raise ValueError("Se debe proporcionar una ruta destino para exportar el reporte.")
 
     wb = Workbook()
 
@@ -227,10 +223,14 @@ def exportar_servicios_pendientes(ruta_destino: str | None = None) -> str:
             total_valor += s.get("valor", 0)
             fondo = alt_fill if (i - 5) % 2 == 1 else None
 
+            cliente_val = s.get("cliente_nombre") or ""
+            desc_val = s.get("descripcion") or ""
+            txt_desc = f"{cliente_val} - {desc_val}" if cliente_val and desc_val else (cliente_val or desc_val)
+
             fila = [
                 s.get("id", ""),
                 formatear_moneda(s.get("valor", 0)),
-                s.get("descripcion", "") or "",
+                txt_desc,
                 s["fecha"],
                 formatear_moneda(mensajero.get("base_actual", 0)) if i == 5 else "",
                 dias_pend,
@@ -297,12 +297,16 @@ def exportar_servicios_pendientes(ruta_destino: str | None = None) -> str:
         total_general += s.get("valor", 0)
         fondo = alt_fill if (i - 5) % 2 == 1 else None
 
+        cliente_val = s.get("cliente_nombre") or ""
+        desc_val = s.get("descripcion") or ""
+        txt_desc = f"{cliente_val} - {desc_val}" if cliente_val and desc_val else (cliente_val or desc_val)
+
         fila = [
             s.get("id", ""),
             s.get("mensajero_nombre", ""),
             s.get("mensajero_telefono", ""),
             formatear_moneda(s.get("valor", 0)),
-            s.get("descripcion", "") or "",
+            txt_desc,
             s["fecha"],
             dias_pend,
             "",

@@ -151,7 +151,7 @@ class TabFinanzas(ctk.CTkFrame):
         ctk.CTkButton(header_ingresos, text="📥 Exportar Reporte", width=140, height=28,
                      fg_color=COLORS["success"], hover_color="#219150",
                      text_color="#ffffff", font=ctk.CTkFont(size=11, weight="bold"),
-                     command=self.reload_data # Actualiza la tabla
+                     command=self._exportar_ingresos
                      ).pack(side="right", padx=(5, 0))
         
         # Rediseño de la lógica de tablas para usar grid
@@ -408,7 +408,7 @@ class TabFinanzas(ctk.CTkFrame):
         entry_pass.focus_set()
 
         def verificar(event=None):
-            if entry_pass.get() == db.get_app_password():
+            if entry_pass.get() == db.get_app_password("operativa"):
                 modal.destroy()
                 callback()
             else:
@@ -422,3 +422,59 @@ class TabFinanzas(ctk.CTkFrame):
         db.eliminar_gasto(id_gasto)
         self.reload_data()
         CTkMessagebox(title="Éxito", message="Gasto eliminado correctamente.", icon="check")
+
+    def _exportar_ingresos(self):
+        from tkinter import filedialog
+        from database.exportador import exportar_liquidaciones
+        
+        filtro = self.filtro_var.get()
+        if filtro == "fecha":
+            f_inicio = self.cal_desde.get_date().strftime("%Y-%m-%d")
+            f_fin = self.cal_hasta.get_date().strftime("%Y-%m-%d")
+            filtro = f"{f_inicio}..{f_fin}"
+            
+        datos = db.obtener_liquidaciones(filtro)
+        if not datos:
+            CTkMessagebox(title="ℹ️ Sin datos", message="No hay liquidaciones para exportar.",
+                          icon="info", option_1="OK")
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ruta_sugerida = f"Ingresos_Liquidaciones_{timestamp}.xlsx"
+        
+        ruta_destino = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Archivos de Excel", "*.xlsx")],
+            initialfile=ruta_sugerida,
+            title="Seleccionar dónde guardar el reporte"
+        )
+        
+        if not ruta_destino:
+            return
+
+        try:
+            ruta = exportar_liquidaciones(datos, ruta_destino=ruta_destino)
+            msg = CTkMessagebox(
+                title="✅ Exportación Exitosa",
+                message=f"Archivo generado correctamente en:\n{ruta}",
+                icon="check", option_1="Abrir archivo", option_2="OK"
+            )
+            
+            if msg.get() == "Abrir archivo":
+                try:
+                    import subprocess, platform, os
+                    if platform.system() == 'Darwin':
+                        subprocess.call(('open', ruta))
+                    elif platform.system() == 'Windows':
+                        os.startfile(ruta)
+                    else:
+                        subprocess.call(('xdg-open', ruta))
+                except Exception:
+                    pass
+        except Exception as e:
+            CTkMessagebox(
+                title="❌ Error",
+                message=f"No se pudo exportar:\n{str(e)}",
+                icon="cancel", option_1="OK"
+            )
+

@@ -29,13 +29,15 @@ class TabGestion(ctk.CTkFrame):
 
         self._build_ui()
         self._cargar_mensajeros()
+        self._cargar_cola()
 
 
     def _build_ui(self):
         contenedor = ctk.CTkFrame(self, fg_color="transparent")
         contenedor.pack(fill="both", expand=True)
-        contenedor.grid_columnconfigure(0, weight=1, minsize=340)
-        contenedor.grid_columnconfigure(1, weight=3)
+        contenedor.grid_columnconfigure(0, weight=1, minsize=280) # Mensajeros
+        contenedor.grid_columnconfigure(1, weight=1, minsize=260) # Turnero
+        contenedor.grid_columnconfigure(2, weight=2, minsize=400) # Servicios
         contenedor.grid_rowconfigure(0, weight=1)
 
         # ── Panel Izquierdo: CRUD Mensajeros ──
@@ -131,7 +133,7 @@ class TabGestion(ctk.CTkFrame):
 
         # ── Panel Derecho: Servicios y Liquidación ──
         panel_der = ctk.CTkFrame(contenedor, fg_color=COLORS["bg_card"], corner_radius=12)
-        panel_der.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=0)
+        panel_der.grid(row=0, column=2, sticky="nsew", padx=(8, 0), pady=0)
 
         # Barra superior del panel derecho
         barra_sup = ctk.CTkFrame(panel_der, fg_color="transparent")
@@ -258,6 +260,42 @@ class TabGestion(ctk.CTkFrame):
         self.tree_servicios.pack(fill="both", expand=True, padx=2, pady=2)
         self.tree_servicios.bind("<Double-1>", self._on_doble_clic_servicio)
 
+
+        # ── Panel Central: Turnero ──
+        panel_turnero = ctk.CTkFrame(contenedor, fg_color=COLORS["bg_card"], corner_radius=12)
+        panel_turnero.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=0)
+
+        header_turnero = ctk.CTkFrame(panel_turnero, fg_color="transparent")
+        header_turnero.pack(fill="x", padx=15, pady=(15, 5))
+
+        ctk.CTkLabel(
+            header_turnero, text="🔄 Turnero",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#27ae60"
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            header_turnero, text="🧹 Limpiar", width=70, height=28,
+            fg_color=COLORS["danger"], text_color="#ffffff",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._limpiar_turnero
+        ).pack(side="right")
+
+        # Entrada por teclado para identificativo
+        frame_input_turno = ctk.CTkFrame(panel_turnero, fg_color="transparent")
+        frame_input_turno.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(frame_input_turno, text="⌨️ Identificativo:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 5))
+        self.entry_turno_id = ctk.CTkEntry(frame_input_turno, width=80, fg_color=COLORS["bg_input"], text_color=COLORS["text"])
+        self.entry_turno_id.pack(side="left", fill="x", expand=True)
+        self.entry_turno_id.bind("<Return>", self._procesar_id_turno)
+
+        self.scroll_cola = ctk.CTkScrollableFrame(panel_turnero, fg_color="transparent")
+        self.scroll_cola.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+
+        # Variables para render del turnero
+        self._cola_cards = {}
+
     def _on_search_key_release(self, event=None):
         """Debounce más corto para mayor agilidad."""
         if hasattr(self, "_search_job") and self._search_job:
@@ -274,9 +312,10 @@ class TabGestion(ctk.CTkFrame):
         mensajeros_all = db.obtener_mensajeros(busqueda)
         
         # 2. Separar y ordenar
-        en_cola = [m for m in mensajeros_all if m["id"] in pos_cola]
+        mensajeros_activos = [m for m in mensajeros_all if (m.get("estado_trabajo") or "trabajando").lower() != "descanso"]
+        en_cola = [m for m in mensajeros_activos if m["id"] in pos_cola]
         en_cola.sort(key=lambda x: pos_cola[x["id"]])
-        fuera_cola = [m for m in mensajeros_all if m["id"] not in pos_cola]
+        fuera_cola = [m for m in mensajeros_activos if m["id"] not in pos_cola]
         lista_final = en_cola + fuera_cola
 
         # 3. Limpieza y Reconciliación (Grid es más estable)
@@ -332,22 +371,32 @@ class TabGestion(ctk.CTkFrame):
                 lt = ctk.CTkLabel(txt_frame, text=f"📞 {m['telefono']}", font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"], anchor="w", fg_color=bg_color_card)
                 lt.pack(fill="x", side="top")
 
+                # Mostrar días de descanso si existen
+                descanso_txt = m.get('dias_descanso', '').strip()
+                descanso_str = f"💤 Descansa: {descanso_txt}" if descanso_txt else "💤 Sin asignar"
+                ld = ctk.CTkLabel(txt_frame, text=descanso_str, font=ctk.CTkFont(size=10, slant="italic"), text_color=COLORS["text_muted"], anchor="w", fg_color=bg_color_card)
+                ld.pack(fill="x", side="top")
+
                 dot = ctk.CTkFrame(card, width=12, height=12, corner_radius=6, fg_color=color_status)
                 dot.pack(side="right", padx=15)
 
                 def on_click(event, _mid=mid, _mn=m["nombre"], _mt=m["telefono"]):
                     self._seleccionar_mensajero(_mid, _mn, _mt)
 
-                for w in (card, txt_frame, ln, lt, dot): w.bind("<Button-1>", on_click)
-                self._messenger_cards[mid] = (card, txt_frame, ln, lt, dot)
+                for w in (card, txt_frame, ln, lt, ld, dot): w.bind("<Button-1>", on_click)
+                self._messenger_cards[mid] = (card, txt_frame, ln, lt, ld, dot)
             else:
-                card, txt, ln, lt, dot = self._messenger_cards[mid]
+                card, txt, ln, lt, ld, dot = self._messenger_cards[mid]
                 card.grid(row=i, column=0, pady=4, padx=8, sticky="ew")
                 card.configure(fg_color=bg_color_card, border_width=border_width, border_color=border_color)
                 txt.configure(fg_color=bg_color_card)
                 ln.configure(text=f"👤 {m['nombre']}", fg_color=bg_color_card, font=ctk.CTkFont(size=18, weight="bold" if is_sel else "normal"))
                 lt.configure(text=f"📞 {m['telefono']}", fg_color=bg_color_card)
+                descanso_txt = m.get('dias_descanso', '').strip()
+                ld.configure(text=f"💤 Descansa: {descanso_txt}" if descanso_txt else "💤 Sin asignar", fg_color=bg_color_card)
                 dot.configure(fg_color=color_status)
+
+
 
     def _seleccionar_mensajero(self, id_: int, nombre: str, telefono: str):
         # Guardar base actual del mensajero previo antes de cambiar
@@ -371,7 +420,7 @@ class TabGestion(ctk.CTkFrame):
             # Si no hay búsqueda, hacemos una actualización suave de colores sin pestañear
             cola = db.obtener_cola_turnos()
             ids_en_cola = [t["mensajero_id"] for t in cola]
-            for mid, (card, txt, ln, lt, dot) in self._messenger_cards.items():
+            for mid, (card, txt, ln, lt, ld, dot) in self._messenger_cards.items():
                 is_sel_card = (mid == id_)
                 es_primero_en_cola = (len(ids_en_cola) > 0 and mid == ids_en_cola[0])
                 if es_primero_en_cola:
@@ -386,6 +435,7 @@ class TabGestion(ctk.CTkFrame):
                 txt.configure(fg_color=bg)
                 ln.configure(fg_color=bg, font=ctk.CTkFont(size=18, weight="bold" if is_sel_card else "normal"))
                 lt.configure(fg_color=bg)
+                ld.configure(fg_color=bg)
 
         self._cargar_servicios_pendientes()
 
@@ -407,14 +457,127 @@ class TabGestion(ctk.CTkFrame):
             return
         FormularioMensajero(self.app, self._procesar_form_mensajero, self.mensajero_seleccionado)
 
-    def _procesar_form_mensajero(self, nombre, telefono, id_=None):
+    def _procesar_form_mensajero(self, nombre, telefono, identificativo, estado_trabajo, dias_descanso, id_=None):
         if id_ and self.mensajero_seleccionado:
-            db.actualizar_mensajero(id_, nombre, telefono)
+            db.actualizar_mensajero(id_, nombre, telefono, identificativo, estado_trabajo, dias_descanso)
             self.mensajero_seleccionado = {"id": id_, "nombre": nombre, "telefono": telefono}
             self.lbl_mensajero_sel.configure(text=f"👤  {nombre}  —  📞 {telefono}")
         else:
-            db.crear_mensajero(nombre, telefono)
+            db.crear_mensajero(nombre, telefono, identificativo, estado_trabajo, dias_descanso)
         self._cargar_mensajeros()
+        
+    def _cargar_cola(self):
+        cola = db.obtener_cola_turnos()
+        ids_nuevos = [t["mensajero_id"] for t in cola]
+        ids_actuales = list(self._cola_cards.keys())
+
+        for mid in ids_actuales:
+            if mid not in ids_nuevos:
+                widgets = self._cola_cards.pop(mid)
+                widgets[0].destroy()
+
+        if not cola:
+            for w in self.scroll_cola.winfo_children(): w.destroy()
+            self._cola_cards.clear()
+            ctk.CTkLabel(self.scroll_cola, text="No hay nadie en turno", font=ctk.CTkFont(size=12, slant="italic"), text_color=COLORS["text_muted"]).grid(row=0, column=0, pady=20, sticky="ew")
+            self.scroll_cola.grid_columnconfigure(0, weight=1)
+            return
+
+        for w in self.scroll_cola.winfo_children():
+            if isinstance(w, ctk.CTkLabel) and "No hay" in w.cget("text"): w.destroy()
+
+        self.scroll_cola.grid_columnconfigure(0, weight=1)
+        for i, t in enumerate(cola):
+            mid = t["mensajero_id"]
+            is_first = (i == 0)
+            bg_color = "#ebf9f1" if is_first else COLORS["bg_input"]
+
+            if mid not in self._cola_cards:
+                card_kwargs = {"master": self.scroll_cola, "fg_color": bg_color, "corner_radius": 8, "height": 50}
+                if is_first:
+                    card_kwargs["border_width"] = 2
+                    card_kwargs["border_color"] = COLORS["success"]
+                card = ctk.CTkFrame(**card_kwargs)
+                card.grid(row=i, column=0, pady=3, padx=2, sticky="ew")
+                card.grid_propagate(False)
+
+                pos_lbl = ctk.CTkLabel(card, text=str(i + 1), font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["success"] if is_first else COLORS["text_muted"], width=30)
+                pos_lbl.pack(side="left", padx=(5, 2))
+
+                info_frame = ctk.CTkFrame(card, fg_color="transparent")
+                info_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+
+                lbl_n = ctk.CTkLabel(info_frame, text=t["nombre"], font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["text"], anchor="w")
+                lbl_n.pack(fill="x")
+
+                lbl_f = ctk.CTkLabel(info_frame, text=f"Llegó: {t['fecha_entrada'].split(' ')[1]}", font=ctk.CTkFont(size=10), text_color=COLORS["text_muted"], anchor="w")
+                lbl_f.pack(fill="x")
+
+                btns_frame = ctk.CTkFrame(card, fg_color="transparent")
+                btns_frame.pack(side="right", padx=5)
+
+                ctk.CTkButton(btns_frame, text="❌", width=25, height=25, fg_color="#e74c3c", hover_color="#c0392b", command=lambda mid=mid: self._quitar_turno(mid)).pack(side="right")
+                self._cola_cards[mid] = (card, pos_lbl, lbl_n, lbl_f)
+            else:
+                card, pos_lbl, lbl_n, lbl_f = self._cola_cards[mid]
+                card.grid(row=i, column=0, pady=3, padx=2, sticky="ew")
+                card.configure(fg_color=bg_color)
+                if is_first:
+                    card.configure(border_width=2, border_color=COLORS["success"])
+                else:
+                    card.configure(border_width=0)
+                pos_lbl.configure(text=str(i + 1), text_color=COLORS["success"] if is_first else COLORS["text_muted"])
+                lbl_n.configure(text=t["nombre"], text_color=COLORS["text"])
+                lbl_f.configure(text=f"Llegó: {t['fecha_entrada'].split(' ')[1]}", text_color=COLORS["text_muted"])
+
+    def _procesar_id_turno(self, event=None):
+        id_input = self.entry_turno_id.get().strip()
+        if not id_input: return
+        self.entry_turno_id.delete(0, "end")
+        
+        try:
+            identificativo = int(id_input)
+        except ValueError:
+            CTkMessagebox(title="Error", message="Identificativo inválido.", icon="cancel")
+            return
+            
+        mensajeros = db.obtener_mensajeros()
+        mensajero = next((m for m in mensajeros if m.get("identificativo") == identificativo), None)
+        
+        if not mensajero:
+            CTkMessagebox(title="Error", message="Mensajero no encontrado.", icon="cancel")
+            return
+            
+        estado = (mensajero.get("estado_trabajo") or "trabajando").lower()
+        if estado == "descanso":
+            CTkMessagebox(title="Aviso", message=f"El mensajero {mensajero['nombre']} está en descanso.", icon="warning")
+            return
+            
+        # Comprobar si ya está en cola
+        cola = db.obtener_cola_turnos()
+        if any(t["mensajero_id"] == mensajero["id"] for t in cola):
+            CTkMessagebox(title="Aviso", message="El mensajero ya está en la cola.", icon="info")
+            return
+            
+        db.registrar_en_turno(mensajero["id"])
+        self._cargar_cola()
+        self._cargar_mensajeros()
+
+    def _quitar_turno(self, mid):
+        db.quitar_de_turno(mid)
+        self._cargar_cola()
+        self._cargar_mensajeros()
+
+    def _limpiar_turnero(self):
+        msg = CTkMessagebox(
+            title="Confirmar",
+            message="¿Vaciar toda la cola de turnos?",
+            icon="question", option_1="No", option_2="Sí"
+        )
+        if msg.get() == "Sí":
+            db.limpiar_turnero()
+            self._cargar_cola()
+            self._cargar_mensajeros()
 
     def _eliminar_mensajero(self):
         if not self.mensajero_seleccionado:
@@ -825,7 +988,7 @@ class TabGestion(ctk.CTkFrame):
         color = COLORS["success"] if tiene_trabajo else COLORS["danger"]
         
         # Actualizar el widget
-        dot = self._messenger_cards[id_mensajero][4]
+        dot = self._messenger_cards[id_mensajero][5]
         dot.configure(fg_color=color)
 
     def _on_inline_focus_out(self, event):
