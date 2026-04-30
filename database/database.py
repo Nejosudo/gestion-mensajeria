@@ -1,3 +1,24 @@
+# ── Porcentaje Empresa ──
+def get_porcentaje_empresa() -> float:
+    """Obtiene el porcentaje de ganancia de la empresa."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT valor FROM Configuracion WHERE clave='porcentaje_empresa'")
+    res = cursor.fetchone()
+    conn.close()
+    return float(res[0]) if res else 20.0
+
+def set_porcentaje_empresa(valor: float):
+    """Actualiza el porcentaje de ganancia de la empresa."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT valor FROM Configuracion WHERE clave='porcentaje_empresa'")
+    if cursor.fetchone():
+        cursor.execute("UPDATE Configuracion SET valor=? WHERE clave='porcentaje_empresa'", (str(valor),))
+    else:
+        cursor.execute("INSERT INTO Configuracion (clave, valor) VALUES ('porcentaje_empresa', ?)", (str(valor),))
+    conn.commit()
+    conn.close()
 import sqlite3
 import os
 import platform
@@ -495,9 +516,14 @@ def ejecutar_liquidacion(mensajero_id: int, base: float = 0, pendientes: list | 
         return None
 
     subtotal = sum(s["valor"] for s in pendientes)
-    comision = subtotal * 0.20
-    # El neto es la ganancia por el trabajo (80%)
-    neto = subtotal * 0.80
+    try:
+        from database import get_porcentaje_empresa
+        porcentaje = get_porcentaje_empresa() / 100.0
+    except Exception:
+        porcentaje = 0.20
+    comision = subtotal * porcentaje
+    # El neto es la ganancia por el trabajo (resto)
+    neto = subtotal - comision
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = get_connection()

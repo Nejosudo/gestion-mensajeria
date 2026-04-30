@@ -84,13 +84,21 @@ class TabTurnero(ctk.CTkFrame):
             self.after_cancel(self._search_job)
         self._search_job = self.after(100, self._cargar_disponibles)
 
+
     def _cargar_disponibles(self):
         busqueda = self.entry_buscar.get().strip()
         mensajeros = db.obtener_mensajeros(busqueda)
-        cola_actual = [t["mensajero_id"] for t in db.obtener_cola_turnos()]
-        
-        # 1. Obtener datos
-        ids_nuevos = [m["id"] for m in mensajeros if m["id"] not in cola_actual]
+        cola = db.obtener_cola_turnos()
+        ids_en_cola = [t["mensajero_id"] for t in cola]
+        pos_cola = {id_m: i for i, id_m in enumerate(ids_en_cola)}
+
+        # Ordenar mensajeros: primero los que están en la cola (en el mismo orden), luego el resto
+        en_cola = [m for m in mensajeros if m["id"] in pos_cola]
+        en_cola.sort(key=lambda x: pos_cola[x["id"]])
+        fuera_cola = [m for m in mensajeros if m["id"] not in pos_cola]
+        lista_final = en_cola + fuera_cola
+
+        ids_nuevos = [m["id"] for m in lista_final]
         ids_actuales = list(self._disponibles_cards.keys())
 
         for mid in ids_actuales:
@@ -98,7 +106,7 @@ class TabTurnero(ctk.CTkFrame):
                 card = self._disponibles_cards.pop(mid)
                 card.destroy()
 
-        if not ids_nuevos:
+        if not lista_final:
             for w in self.scroll_disponibles.winfo_children(): w.destroy()
             self._disponibles_cards.clear()
             ctk.CTkLabel(self.scroll_disponibles, text="No hay mensajeros", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"]).grid(row=0, column=0, pady=20, sticky="ew")
@@ -111,16 +119,22 @@ class TabTurnero(ctk.CTkFrame):
 
         # 2. Reordenar o Crear usando GRID
         self.scroll_disponibles.grid_columnconfigure(0, weight=1)
-        for i, m in enumerate(mensajeros):
-            if m["id"] in cola_actual: continue
+        for i, m in enumerate(lista_final):
             mid = m["id"]
+            # Si está en la cola, no mostrar botón para agregar
+            show_btn = mid not in ids_en_cola
+            # Resaltar igual que en el turnero si es el primero en la cola
+            es_primero_en_cola = (len(ids_en_cola) > 0 and mid == ids_en_cola[0])
+            bg_color_card = "#ebf9f1" if es_primero_en_cola else COLORS["bg_input"]
+            border_width = 2 if es_primero_en_cola else 0
+            border_color = COLORS["success"] if es_primero_en_cola else bg_color_card
 
             if mid not in self._disponibles_cards:
-                card = ctk.CTkFrame(self.scroll_disponibles, fg_color=COLORS["bg_input"], corner_radius=10, height=70)
+                card = ctk.CTkFrame(self.scroll_disponibles, fg_color=bg_color_card, corner_radius=10, height=70, border_width=border_width, border_color=border_color)
                 card.grid(row=i, column=0, pady=4, padx=5, sticky="ew")
                 card.grid_propagate(False)
 
-                txt_frame = ctk.CTkFrame(card, fg_color=COLORS["bg_input"])
+                txt_frame = ctk.CTkFrame(card, fg_color=bg_color_card)
                 txt_frame.pack(side="left", fill="both", expand=True, padx=(12, 5), pady=8)
 
                 lbl_n = ctk.CTkLabel(txt_frame, text=f"👤 {m['nombre']}", font=ctk.CTkFont(size=15, weight="bold"), text_color=COLORS["text"], anchor="w")
@@ -129,11 +143,25 @@ class TabTurnero(ctk.CTkFrame):
                 lbl_t = ctk.CTkLabel(txt_frame, text=f"📞 {m['telefono']}", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w")
                 lbl_t.pack(fill="x", side="top")
 
-                ctk.CTkButton(card, text="➕", width=40, height=35, fg_color=COLORS["success"], hover_color="#219150", font=ctk.CTkFont(size=18, weight="bold"), command=lambda mid=mid: self._registrar_llegada(mid)).pack(side="right", padx=10)
+                btn_add = None
+                if show_btn:
+                    btn_add = ctk.CTkButton(card, text="➕", width=40, height=35, fg_color=COLORS["success"], hover_color="#219150", font=ctk.CTkFont(size=18, weight="bold"), command=lambda mid=mid: self._registrar_llegada(mid))
+                    btn_add.pack(side="right", padx=10)
+                card._btn_add = btn_add
                 self._disponibles_cards[mid] = card
             else:
                 card = self._disponibles_cards[mid]
                 card.grid(row=i, column=0, pady=4, padx=5, sticky="ew")
+                card.configure(fg_color=bg_color_card, border_width=border_width, border_color=border_color)
+                # Eliminar botón si existe y no debe mostrarse
+                if hasattr(card, '_btn_add') and card._btn_add:
+                    card._btn_add.destroy()
+                    card._btn_add = None
+                # Volver a crear el botón si debe mostrarse
+                if show_btn and (not hasattr(card, '_btn_add') or card._btn_add is None):
+                    btn_add = ctk.CTkButton(card, text="➕", width=40, height=35, fg_color=COLORS["success"], hover_color="#219150", font=ctk.CTkFont(size=18, weight="bold"), command=lambda mid=mid: self._registrar_llegada(mid))
+                    btn_add.pack(side="right", padx=10)
+                    card._btn_add = btn_add
 
     def _cargar_cola(self):
         cola = db.obtener_cola_turnos()
@@ -231,17 +259,29 @@ class VentanaTurnero(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("📊 Monitor de Turnos - Gestión de Mensajería")
-        self.geometry("900x650")
+        width, height = 900, 650
+        self.geometry(f"{width}x{height}")
         self.minsize(800, 500)
         self.configure(fg_color=COLORS["bg_dark"])
-        
+
+        # Centrar respecto a la ventana principal
+        self.update_idletasks()
+        p_w, p_h = parent.winfo_width(), parent.winfo_height()
+        p_x, p_y = parent.winfo_x(), parent.winfo_y()
+        # Si las dimensiones son inválidas, usar centro de pantalla
+        if p_w <= 1:
+            p_w, p_h = self.winfo_screenwidth(), self.winfo_screenheight()
+            p_x, p_y = 0, 0
+        x = p_x + (p_w // 2) - (width // 2)
+        y = p_y + (p_h // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
         # Estilos y UI
         self.tab_turnero = TabTurnero(self, app_controller=parent)
         self.tab_turnero.pack(fill="both", expand=True)
 
-        # Mantener al frente si es necesario, pero permitir interactuar con la principal
-        self.after(100, self.lift)
-        
+
+        # No usar lift, grab_set ni focus_force para no bloquear la principal ni forzar foco
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _on_close(self):

@@ -221,20 +221,21 @@ class App(ctk.CTk):
         """Abre ventana de configuración para cambio de contraseña."""
         modal = ctk.CTkToplevel(self)
         modal.title("Configuración")
-        modal.geometry("400x350")
+        modal.geometry("400x480")
         modal.resizable(False, False)
         
         # Centrar relativo a la principal
         x = self.winfo_x() + (self.winfo_width() // 2) - 200
-        y = self.winfo_y() + (self.winfo_height() // 2) - 175
-        modal.geometry(f"400x350+{x}+{y}")
+        y = self.winfo_y() + (self.winfo_height() // 2) - 240
+        modal.geometry(f"400x480+{x}+{y}")
 
         # Asegurar que sea visible antes del grab_set
         modal.after(10, modal.focus_force)
         modal.after(100, modal.grab_set)
 
+
         ctk.CTkLabel(modal, text="⚙️ Configuración de Seguridad", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=20)
-        
+
         # Frame contenedor
         container = ctk.CTkFrame(modal, fg_color="transparent")
         container.pack(pady=10, padx=40, fill="both")
@@ -251,28 +252,62 @@ class App(ctk.CTk):
         conf_pass = ctk.CTkEntry(container, show="*", placeholder_text="Repite la nueva")
         conf_pass.pack(fill="x", pady=(0, 10))
 
+        # Porcentaje de ganancia empresa
+        try:
+            porcentaje_debug = db.get_porcentaje_empresa()
+            print("DEBUG: get_porcentaje_empresa =", porcentaje_debug)
+        except Exception as e:
+            print("DEBUG: ERROR get_porcentaje_empresa", e)
+            porcentaje_debug = 20
+        frame_porcentaje = ctk.CTkFrame(container, fg_color="transparent")
+        frame_porcentaje.pack(fill="x", pady=(10, 0))
+        ctk.CTkLabel(frame_porcentaje, text="% Ganancia Empresa por Domicilio:", anchor="w", width=220).pack(side="left", padx=(0, 10))
+        entry_porcentaje = ctk.CTkEntry(frame_porcentaje, placeholder_text="Ej: 20", width=60, justify="center")
+        entry_porcentaje.pack(side="left")
+        entry_porcentaje.insert(0, str(int(porcentaje_debug)))
+
         def guardar():
             actual = curr_pass.get()
             nueva = new_pass.get()
             confirm = conf_pass.get()
 
+            # Validar y guardar contraseña
             if actual != db.get_app_password():
                 CTkMessagebox(title="Error", message="La contraseña actual es incorrecta.", icon="cancel")
                 return
-            
-            if not nueva or len(nueva) < 4:
-                CTkMessagebox(title="Error", message="La nueva contraseña debe tener al menos 4 caracteres.", icon="warning")
-                return
-            
-            if nueva != confirm:
-                CTkMessagebox(title="Error", message="Las nuevas contraseñas no coinciden.", icon="warning")
+            if nueva:
+                if len(nueva) < 4:
+                    CTkMessagebox(title="Error", message="La nueva contraseña debe tener al menos 4 caracteres.", icon="warning")
+                    return
+                if nueva != confirm:
+                    CTkMessagebox(title="Error", message="Las nuevas contraseñas no coinciden.", icon="warning")
+                    return
+                db.set_app_password(nueva)
+
+            # Validar y guardar porcentaje
+            try:
+                porc = float(entry_porcentaje.get())
+                if porc < 0 or porc > 100:
+                    raise ValueError
+                db.set_porcentaje_empresa(porc)
+            except Exception:
+                CTkMessagebox(title="Error", message="Porcentaje inválido. Debe ser un número entre 0 y 100.", icon="warning")
                 return
 
-            db.set_app_password(nueva)
             modal.destroy()
-            CTkMessagebox(title="Éxito", message="Contraseña actualizada correctamente.", icon="check")
+            CTkMessagebox(title="Éxito", message="Configuración actualizada correctamente.", icon="check")
 
-        ctk.CTkButton(modal, text="Actualizar Contraseña", fg_color=COLORS["accent"], command=guardar).pack(pady=20)
+        frame_botones = ctk.CTkFrame(modal, fg_color="transparent")
+        frame_botones.pack(pady=(10, 20))
+
+        btn_aceptar = ctk.CTkButton(frame_botones, text="Aceptar", fg_color=COLORS["accent"], command=guardar, width=120, height=38)
+        btn_aceptar.pack(side="left", padx=(0, 10))
+
+        def cancelar():
+            modal.destroy()
+
+        btn_cancelar = ctk.CTkButton(frame_botones, text="Cancelar", fg_color=COLORS["border"], text_color=COLORS["text"], command=cancelar, width=120, height=38)
+        btn_cancelar.pack(side="left")
 
     def refresh_clientes(self):
         """Llamado desde tab_gestion cuando se asigna un cliente."""

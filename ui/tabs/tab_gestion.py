@@ -306,10 +306,20 @@ class TabGestion(ctk.CTkFrame):
             is_sel = self.mensajero_seleccionado is not None and self.mensajero_seleccionado.get("id") == mid
             tiene_pedidos = (m.get("servicios_pendientes", 0) > 0)
             color_status = COLORS["success"] if tiene_pedidos else COLORS["danger"]
-            bg_color_card = COLORS["highlight"] if is_sel else COLORS["bg_card"]
+
+            # El color verde del primero en la cola siempre prevalece
+            es_primero_en_cola = (len(ids_en_cola) > 0 and mid == ids_en_cola[0])
+            if es_primero_en_cola:
+                bg_color_card = "#ebf9f1"
+                border_width = 2
+                border_color = COLORS["success"]
+            else:
+                bg_color_card = COLORS["highlight"] if is_sel else COLORS["bg_card"]
+                border_width = 1 if is_sel else 0
+                border_color = COLORS["accent"] if is_sel else bg_color_card
 
             if mid not in self._messenger_cards:
-                card = ctk.CTkFrame(self.lista_mensajeros, fg_color=bg_color_card, corner_radius=10, height=70, cursor="hand2")
+                card = ctk.CTkFrame(self.lista_mensajeros, fg_color=bg_color_card, corner_radius=10, height=70, cursor="hand2", border_width=border_width, border_color=border_color)
                 card.grid(row=i, column=0, pady=4, padx=8, sticky="ew")
                 card.grid_propagate(False)
 
@@ -332,10 +342,8 @@ class TabGestion(ctk.CTkFrame):
                 self._messenger_cards[mid] = (card, txt_frame, ln, lt, dot)
             else:
                 card, txt, ln, lt, dot = self._messenger_cards[mid]
-                # GRID permite cambiar el row sin pestañear
                 card.grid(row=i, column=0, pady=4, padx=8, sticky="ew")
-                
-                card.configure(fg_color=bg_color_card, border_width=1 if is_sel else 0, border_color=COLORS["accent"] if is_sel else bg_color_card)
+                card.configure(fg_color=bg_color_card, border_width=border_width, border_color=border_color)
                 txt.configure(fg_color=bg_color_card)
                 ln.configure(text=f"👤 {m['nombre']}", fg_color=bg_color_card, font=ctk.CTkFont(size=18, weight="bold" if is_sel else "normal"))
                 lt.configure(text=f"📞 {m['telefono']}", fg_color=bg_color_card)
@@ -361,10 +369,20 @@ class TabGestion(ctk.CTkFrame):
             self._cargar_mensajeros() # Esto restaura la lista completa
         else:
             # Si no hay búsqueda, hacemos una actualización suave de colores sin pestañear
+            cola = db.obtener_cola_turnos()
+            ids_en_cola = [t["mensajero_id"] for t in cola]
             for mid, (card, txt, ln, lt, dot) in self._messenger_cards.items():
                 is_sel_card = (mid == id_)
-                bg = COLORS["highlight"] if is_sel_card else COLORS["bg_card"]
-                card.configure(fg_color=bg, border_width=1 if is_sel_card else 0, border_color=COLORS["accent"] if is_sel_card else bg)
+                es_primero_en_cola = (len(ids_en_cola) > 0 and mid == ids_en_cola[0])
+                if es_primero_en_cola:
+                    bg = "#ebf9f1"
+                    bw = 2
+                    bc = COLORS["success"]
+                else:
+                    bg = COLORS["highlight"] if is_sel_card else COLORS["bg_card"]
+                    bw = 1 if is_sel_card else 0
+                    bc = COLORS["accent"] if is_sel_card else bg
+                card.configure(fg_color=bg, border_width=bw, border_color=bc)
                 txt.configure(fg_color=bg)
                 ln.configure(fg_color=bg, font=ctk.CTkFont(size=18, weight="bold" if is_sel_card else "normal"))
                 lt.configure(fg_color=bg)
@@ -482,11 +500,12 @@ class TabGestion(ctk.CTkFrame):
 
         db.crear_servicio(self.mensajero_seleccionado["id"], valor, descripcion, cliente_nombre=cliente_nombre)
         
-        # Lógica del Turnero: Si el mensajero era el primero en la cola, moverlo al final
+
+        # Permitir asignar servicios aunque la cola esté vacía
         siguiente = db.obtener_siguiente_en_turno()
         if siguiente and siguiente["mensajero_id"] == self.mensajero_seleccionado["id"]:
-            db.avanzar_turno(self.mensajero_seleccionado["id"])
-            
+            db.quitar_de_turno(self.mensajero_seleccionado["id"])
+
             # Actualizar la ventana de turnero si está abierta
             if hasattr(self.app, 'v_turnero') and self.app.v_turnero and self.app.v_turnero.winfo_exists():
                 self.app.v_turnero.tab_turnero.reload_data()
